@@ -1,14 +1,21 @@
 /**
  * Client-side image compression before upload.
- * Enforces allowed formats, resizes large camera-roll photos to max 960px width,
- * and exports a lightweight WebP/JPEG data URL for fast mobile uploads.
+ * Enforces allowed formats, resizes large camera-roll photos and exports WebP.
  */
 
 const ALLOWED_INPUT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_RAW_INPUT_BYTES = 12 * 1024 * 1024; // 12MB raw source limit
-const TARGET_MAX_DIMENSION = 960;
+const TARGET_MAX_DIMENSION = 800;
+const TARGET_BYTES = 200 * 1024;
 
-export async function compressProfilePhoto(file: File): Promise<string> {
+function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => canvas.toBlob(
+    (blob) => blob ? resolve(blob) : reject(new Error('Could not compress this image.')),
+    'image/webp', quality
+  ));
+}
+
+export async function compressProfilePhoto(file: File): Promise<File> {
   if (!ALLOWED_INPUT_TYPES.has(file.type)) {
     throw new Error('Please select a JPG, PNG, or WebP photo.');
   }
@@ -44,12 +51,15 @@ export async function compressProfilePhoto(file: File): Promise<string> {
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, 0, 0, width, height);
 
-    // Prefer WebP when supported; fall back to JPEG
-    let output = canvas.toDataURL('image/webp', 0.82);
-    if (!output.startsWith('data:image/webp')) {
-      output = canvas.toDataURL('image/jpeg', 0.84);
+    let output = await canvasToBlob(canvas, 0.82);
+    for (const quality of [0.74, 0.66, 0.58, 0.5]) {
+      if (output.size <= TARGET_BYTES) break;
+      output = await canvasToBlob(canvas, quality);
     }
-    return output;
+    if (output.size > TARGET_BYTES) {
+      throw new Error('This photo could not be compressed below 200 KB. Please choose a simpler image.');
+    }
+    return new File([output], 'profile-photo.webp', { type: 'image/webp' });
   } finally {
     URL.revokeObjectURL(bitmapUrl);
   }

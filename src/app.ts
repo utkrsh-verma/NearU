@@ -1,10 +1,10 @@
 import express, { Request, Response } from 'express';
-import fs from 'node:fs';
 import { supabaseAdmin } from './lib/supabase-admin.ts';
 import { getCampusConfig } from './lib/campusEligibility.ts';
 import {
-  resolveStoredPhotoPath,
-  saveBase64ProfilePhoto,
+  createPublicStorageUrl,
+  isLegacyDataUrl,
+  verifyProfilePhotoObject,
   verifySignedPhotoToken,
 } from './lib/photoStorage.ts';
 import {
@@ -222,24 +222,21 @@ apiRouter.post(
   requireVerified,
   async (req: AuthRequest, res: Response) => {
     try {
-      const { displayOrder, dataUrl } = req.body || {};
+      const { displayOrder, storagePath } = req.body || {};
       const slot = Number(displayOrder);
-      if ((slot !== 1 && slot !== 2) || typeof dataUrl !== 'string') {
+      if ((slot !== 1 && slot !== 2) || typeof storagePath !== 'string') {
         return res.status(400).json({
-          error: 'Valid photo slot (1 or 2) and image data are required.',
+          error: 'Valid photo slot (1 or 2) and storage path are required.',
         });
       }
-
-      const { storagePath, mimeType } = saveBase64ProfilePhoto(
-        req.user!.uid,
-        slot,
-        dataUrl
-      );
+      if (!(await verifyProfilePhotoObject(req.user!.uid, storagePath))) {
+        return res.status(400).json({ error: 'Uploaded photo was not found or is not owned by this account.' });
+      }
       const photo = await upsertProfilePhoto(
         req.user!.uid,
         slot,
         storagePath,
-        mimeType
+        'image/webp'
       );
       const profile = await getMyFullProfile(req.user!.uid);
       res.status(201).json({ photo, profile });
@@ -280,8 +277,7 @@ apiRouter.get('/photos/:photoId', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Photo not found.' });
   }
 
-  // If photo is stored directly as base64 data URL (serverless safe)
-  if (record.storagePath && record.storagePath.startsWith('data:')) {
+  if (isLegacyDataUrl(record.storagePath)) {
     const match = record.storagePath.match(/^data:([^;]+);base64,(.+)$/);
     if (match) {
       const mime = match[1];
@@ -292,14 +288,7 @@ apiRouter.get('/photos/:photoId', async (req: Request, res: Response) => {
     }
   }
 
-  const filePath = resolveStoredPhotoPath(record.storagePath);
-  if (!filePath) {
-    return res.status(404).json({ error: 'Photo file unavailable.' });
-  }
-
-  res.setHeader('Content-Type', record.mimeType || 'image/webp');
-  res.setHeader('Cache-Control', 'private, max-age=3600');
-  fs.createReadStream(filePath).pipe(res);
+  return res.redirect(302, createPublicStorageUrl(record.storagePath));
 });
 
 // Discover queue

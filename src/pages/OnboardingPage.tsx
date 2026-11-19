@@ -19,6 +19,7 @@ import {
   YEAR_OPTIONS,
 } from '../lib/constants';
 import { compressProfilePhoto } from '../lib/imageCompression';
+import { removeUploadedProfilePhoto, uploadProfilePhoto } from '../lib/profilePhotoUpload';
 import { AvatarPhoto } from '../components/AvatarPhoto';
 import { ProfileCardView } from '../components/ProfileCardView';
 
@@ -78,8 +79,11 @@ export function OnboardingPage() {
     setError(null);
     setUploadingSlot(slot);
     try {
-      const compressed = await compressProfilePhoto(file);
-      const { profile: updated } = await api.uploadPhoto(slot, compressed);
+      if (!profile?.id) throw new Error('Please sign in again before uploading a photo.');
+      const storagePath = await uploadProfilePhoto(await compressProfilePhoto(file), profile.id);
+      let updated;
+      try { ({ profile: updated } = await api.uploadPhoto(slot, storagePath)); }
+      catch (error) { await removeUploadedProfilePhoto(storagePath); throw error; }
       setProfile(updated);
     } catch (err: any) {
       setError(err?.message || 'Photo upload failed. Please try another image.');
