@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -9,13 +10,14 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core';
 
 // Profiles table keyed directly by Supabase Auth User ID (UUID)
 export const profiles = pgTable(
   'profiles',
   {
-    id: text('id').primaryKey(), // Supabase Auth User ID (UUID)
+    id: uuid('id').primaryKey(), // Supabase Auth User ID (UUID)
     email: text('email').notNull().unique(),
     collegeEmail: text('college_email'),
     rollNumber: text('roll_number'),
@@ -24,7 +26,7 @@ export const profiles = pgTable(
     isProfileComplete: boolean('is_profile_complete').notNull().default(false),
     isActive: boolean('is_active').notNull().default(true),
     fullName: text('full_name'),
-    dateOfBirth: text('date_of_birth'), // YYYY-MM-DD (18+ enforced on backend)
+    dateOfBirth: date('date_of_birth'), // YYYY-MM-DD
     gender: text('gender'),
     branch: text('branch'),
     batchYear: text('batch_year'),
@@ -32,8 +34,8 @@ export const profiles = pgTable(
     bio: text('bio'),
     lookingFor: text('looking_for'),
     interests: jsonb('interests').$type<string[]>().notNull().default([]),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index('idx_profiles_eligible').on(
@@ -44,18 +46,18 @@ export const profiles = pgTable(
   ]
 );
 
-// Profile photos table (references server-stored image files, not binary blobs)
+// Profile photos table
 export const profilePhotos = pgTable(
   'profile_photos',
   {
     id: serial('id').primaryKey(),
-    userId: text('user_id')
+    userId: uuid('user_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     storagePath: text('storage_path').notNull(),
     mimeType: text('mime_type').notNull().default('image/webp'),
     displayOrder: integer('display_order').notNull(), // 1 or 2
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('uq_profile_photos_user_order').on(
@@ -71,13 +73,13 @@ export const likes = pgTable(
   'likes',
   {
     id: serial('id').primaryKey(),
-    likerId: text('liker_id')
+    likerId: uuid('liker_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    likedId: text('liked_id')
+    likedId: uuid('liked_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('uq_likes_pair').on(table.likerId, table.likedId),
@@ -90,13 +92,13 @@ export const passes = pgTable(
   'passes',
   {
     id: serial('id').primaryKey(),
-    passerId: text('passer_id')
+    passerId: uuid('passer_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    passedId: text('passed_id')
+    passedId: uuid('passed_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('uq_passes_pair').on(table.passerId, table.passedId),
@@ -104,20 +106,20 @@ export const passes = pgTable(
   ]
 );
 
-// Mutual matches table (user1Id < user2Id enforced on backend to prevent duplicates)
+// Mutual matches table
 export const matches = pgTable(
   'matches',
   {
     id: serial('id').primaryKey(),
-    user1Id: text('user1_id')
+    user1Id: uuid('user1_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    user2Id: text('user2_id')
+    user2Id: uuid('user2_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     status: text('status').notNull().default('active'), // 'active' | 'unmatched' | 'blocked'
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('uq_matches_pair').on(table.user1Id, table.user2Id),
@@ -126,7 +128,7 @@ export const matches = pgTable(
   ]
 );
 
-// 1-on-1 text messages table
+// Messages table
 export const messages = pgTable(
   'messages',
   {
@@ -134,12 +136,12 @@ export const messages = pgTable(
     matchId: integer('match_id')
       .notNull()
       .references(() => matches.id, { onDelete: 'cascade' }),
-    senderId: text('sender_id')
+    senderId: uuid('sender_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),
-    readAt: timestamp('read_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [index('idx_messages_match_created').on(table.matchId, table.createdAt)]
 );
@@ -149,14 +151,14 @@ export const blocks = pgTable(
   'blocks',
   {
     id: serial('id').primaryKey(),
-    blockerId: text('blocker_id')
+    blockerId: uuid('blocker_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    blockedId: text('blocked_id')
+    blockedId: uuid('blocked_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     reason: text('reason'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('uq_blocks_pair').on(table.blockerId, table.blockedId),
@@ -170,7 +172,7 @@ export const campusAccessCodes = pgTable('campus_access_codes', {
   code: text('code').notNull().unique(),
   label: text('label').notNull(),
   isActive: boolean('is_active').notNull().default(true),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 // Drizzle Relations

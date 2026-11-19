@@ -209,9 +209,10 @@ export async function syncUserProfile(
 
     return inserted[0];
   } catch (error: any) {
-    console.error('Database query failed (syncUserProfile):', error);
+    const cause = error?.cause?.message ? ` - ${error.cause.message}` : '';
+    console.error('Database query failed (syncUserProfile):', error, cause);
     throw new AppQueryError(
-      `Database error (${error?.message || 'Connection failed'}). Check DATABASE_URL in Vercel.`,
+      `Database error: ${error?.message || 'Connection failed'}${cause}`,
       500
     );
   }
