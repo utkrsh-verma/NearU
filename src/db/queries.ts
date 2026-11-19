@@ -208,10 +208,10 @@ export async function syncUserProfile(
       .returning();
 
     return inserted[0];
-  } catch (error) {
+  } catch (error: any) {
     console.error('Database query failed (syncUserProfile):', error);
     throw new AppQueryError(
-      'Unable to sync your account right now. Please retry.',
+      `Database error (${error?.message || 'Connection failed'}). Check DATABASE_URL in Vercel.`,
       500
     );
   }
