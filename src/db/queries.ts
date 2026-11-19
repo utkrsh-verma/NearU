@@ -250,7 +250,7 @@ export async function verifyCampusAffiliation(
       .set({
         branch,
         batchYear: year,
-        verificationMethod: 'campus_select',
+        verificationMethod: 'campus_invite',
         isVerified: true,
         updatedAt: new Date(),
       })
@@ -262,7 +262,7 @@ export async function verifyCampusAffiliation(
     if (error instanceof AppQueryError) throw error;
     console.error('Database query failed (verifyCampusAffiliation):', error);
     throw new AppQueryError(
-      'Could not save your campus details. Please try again.',
+      `Could not save your campus details: ${error?.message || 'Database error'}`,
       500
     );
   }
@@ -432,7 +432,7 @@ export async function updateMyProfile(uid: string, input: ProfileUpdateInput) {
     if (error instanceof AppQueryError) throw error;
     console.error('Database query failed (updateMyProfile):', error);
     throw new AppQueryError(
-      'Could not save profile changes. Please try again.',
+      `Could not save profile changes: ${error?.message || 'Database error'}`,
       500
     );
   }
