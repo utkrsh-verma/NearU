@@ -1,0 +1,6 @@
+{
+  "name": "NearU",
+  "description": "Real connections. Right around campus. Verified college-exclusive dating web application for GL Bajaj Institute of Technology & Management students.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

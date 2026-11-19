@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-obsidian: #0D0E12;
+  --color-surface: #121317;
+  --color-surface-low: #1A1B20;
+  --color-surface-high: #2A2B32;
+  --color-rose-brand: #E05A6D;
+  --color-rose-soft: #F472B6;
+  --color-verified: #8B5CF6;
+}
+
+@layer base {
+  html, body {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    background-color: #0D0E12;
+    color: #F3F4F6;
+    color-scheme: dark;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+  }
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Custom subtle scrollbars for desktop split-pane inbox */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
