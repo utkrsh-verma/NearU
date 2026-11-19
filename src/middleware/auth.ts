@@ -27,6 +27,8 @@ export const requireAuth = async (
   }
 
   const token = authHeader.split('Bearer ')[1];
+  let authUser: AuthUser;
+
   try {
     const {
       data: { user },
@@ -35,14 +37,16 @@ export const requireAuth = async (
 
     if (error || !user) {
       console.error('Supabase auth verification failed:', error);
-      return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+      return res.status(401).json({
+        error: error?.message || 'Your session has expired. Please sign in again.',
+      });
     }
 
     if (!user.email) {
       return res.status(401).json({ error: 'User account must provide an email address.' });
     }
 
-    const authUser: AuthUser = {
+    authUser = {
       uid: user.id,
       id: user.id,
       email: user.email,
@@ -54,15 +58,28 @@ export const requireAuth = async (
     };
 
     req.user = authUser;
+  } catch (error: any) {
+    console.error('Auth verification exception:', error);
+    return res.status(401).json({
+      error: error?.message || 'Your session has expired. Please sign in again.',
+    });
+  }
+
+  // Sync profile with PostgreSQL database
+  try {
     req.profile = await syncUserProfile(
       authUser.uid,
       authUser.email,
       authUser.name || null
     );
     next();
-  } catch (error) {
-    console.error('Auth verification failed:', error);
-    return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+  } catch (dbError: any) {
+    console.error('Database sync failed:', dbError);
+    return res.status(500).json({
+      error:
+        dbError?.message ||
+        'Database connection failed. Please ensure DATABASE_URL is set in Vercel and Supabase SQL migrations have been executed.',
+    });
   }
 };
 
