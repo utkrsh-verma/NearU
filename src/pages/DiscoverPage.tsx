@@ -11,12 +11,21 @@ interface DiscoverPageProps {
   excludedProfileIds?: string[];
 }
 
+type GenderFilter = 'all' | 'man' | 'woman';
+
+const genderFilters: Array<{ value: GenderFilter; label: string; symbol: string }> = [
+  { value: 'all', label: 'All', symbol: '◎' },
+  { value: 'man', label: 'Male', symbol: '♂' },
+  { value: 'woman', label: 'Female', symbol: '♀' },
+];
+
 export function DiscoverPage({
   onMutualMatch,
   onMatchesChanged,
   excludedProfileIds = [],
 }: DiscoverPageProps) {
   const [queue, setQueue] = useState<PublicProfile[]>([]);
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
@@ -24,11 +33,11 @@ export function DiscoverPage({
   const [blockTarget, setBlockTarget] = useState<PublicProfile | null>(null);
   const [blocking, setBlocking] = useState(false);
 
-  const loadQueue = useCallback(async () => {
+  const loadQueue = useCallback(async (filter: GenderFilter = 'all') => {
     setLoading(true);
     setError(null);
     try {
-      const { profiles } = await api.getDiscoverQueue();
+      const { profiles } = await api.getDiscoverQueue(filter);
       setQueue(profiles);
     } catch (err: any) {
       setError(err?.message || 'Unable to reach NearU right now.');
@@ -49,6 +58,13 @@ export function DiscoverPage({
   }, [excludedProfileIds]);
 
   const currentProfile = queue[0] || null;
+
+  const selectGenderFilter = (filter: GenderFilter) => {
+    if (filter === genderFilter) return;
+    setGenderFilter(filter);
+    setQueue([]);
+    loadQueue(filter);
+  };
 
   const advanceDeck = useCallback((id: string) => {
     setQueue((prev) => prev.filter((p) => p.id !== id));
@@ -146,13 +162,39 @@ export function DiscoverPage({
 
         <button
           type="button"
-          onClick={loadQueue}
+          onClick={() => loadQueue(genderFilter)}
           disabled={loading}
           className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[#121317] border border-[#2A2B32] hover:bg-[#1A1B20] text-xs font-medium text-[#D1D5DB] flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           <span>Refresh</span>
         </button>
+      </div>
+
+      <div
+        className="mb-5 inline-flex max-w-full rounded-xl border border-[#2A2B32] bg-[#121317] p-1"
+        role="group"
+        aria-label="Filter profiles by gender"
+      >
+        {genderFilters.map((filter) => {
+          const active = genderFilter === filter.value;
+          return (
+            <button
+              key={filter.value}
+              type="button"
+              onClick={() => selectGenderFilter(filter.value)}
+              aria-pressed={active}
+              className={`min-h-[36px] rounded-lg px-2.5 sm:px-3 text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                active
+                  ? 'bg-[#E05A6D] text-white shadow-sm'
+                  : 'text-[#9CA3AF] hover:bg-[#1A1B20] hover:text-[#F3F4F6]'
+              }`}
+            >
+              <span className="text-sm leading-none" aria-hidden="true">{filter.symbol}</span>
+              {filter.label}
+            </button>
+          );
+        })}
       </div>
 
       {actionError && (
@@ -205,7 +247,7 @@ export function DiscoverPage({
           <p className="text-sm text-[#9CA3AF] mt-2 leading-relaxed">{error}</p>
           <button
             type="button"
-            onClick={loadQueue}
+            onClick={() => loadQueue(genderFilter)}
             className="mt-6 min-h-[44px] px-6 py-2.5 rounded-xl bg-[#E05A6D] hover:bg-[#cf4c5f] text-white text-sm font-semibold transition-colors cursor-pointer"
           >
             Try again
@@ -220,15 +262,15 @@ export function DiscoverPage({
             <Compass className="w-7 h-7" />
           </div>
           <h2 className="font-display text-2xl font-bold text-[#F3F4F6]">
-            You&apos;re all caught up on campus
+            No profiles found
           </h2>
           <p className="text-sm sm:text-base text-[#9CA3AF] mt-2.5 leading-relaxed max-w-md mx-auto">
-            There are no more verified campus profiles waiting right now. Check back
-            soon as more students join and complete their profiles.
+            No verified {genderFilter === 'all' ? '' : genderFilter === 'man' ? 'male ' : 'female '}
+            profiles are available right now. Try another filter or check back soon.
           </p>
           <button
             type="button"
-            onClick={loadQueue}
+            onClick={() => loadQueue(genderFilter)}
             className="mt-7 min-h-[46px] px-6 py-2.5 rounded-xl bg-[#1A1B20] border border-[#2A2B32] hover:bg-[#2A2B32] text-[#F3F4F6] text-sm font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" />

@@ -568,7 +568,12 @@ export async function hasBlockBetween(userA: string, userB: string): Promise<boo
   }
 }
 
-export async function getDiscoverQueue(uid: string): Promise<PublicProfileDTO[]> {
+export type DiscoverGenderFilter = 'all' | 'man' | 'woman';
+
+export async function getDiscoverQueue(
+  uid: string,
+  genderFilter: DiscoverGenderFilter = 'all'
+): Promise<PublicProfileDTO[]> {
   try {
     const [meRows, likedRows, passedRows, blockRows, matchRows] = await Promise.all([
       db.select().from(profiles).where(eq(profiles.id, uid)).limit(1),
@@ -602,6 +607,13 @@ export async function getDiscoverQueue(uid: string): Promise<PublicProfileDTO[]>
     const excludedList = Array.from(excluded);
 
     // Filter excluded IDs inside PostgreSQL BEFORE applying LIMIT so large campuses never starve
+    const genderCondition =
+      genderFilter === 'man'
+        ? eq(profiles.gender, 'Man')
+        : genderFilter === 'woman'
+          ? eq(profiles.gender, 'Woman')
+          : undefined;
+
     const candidates = await db
       .select()
       .from(profiles)
@@ -610,7 +622,8 @@ export async function getDiscoverQueue(uid: string): Promise<PublicProfileDTO[]>
           eq(profiles.isVerified, true),
           eq(profiles.isProfileComplete, true),
           eq(profiles.isActive, true),
-          notInArray(profiles.id, excludedList)
+          notInArray(profiles.id, excludedList),
+          genderCondition
         )
       )
       .orderBy(desc(profiles.updatedAt))

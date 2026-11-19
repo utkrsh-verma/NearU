@@ -115,8 +115,8 @@ export const api = {
       method: 'POST',
     }),
 
-  getDiscoverQueue: () =>
-    request<{ profiles: PublicProfile[] }>('/api/discover'),
+  getDiscoverQueue: (gender: 'all' | 'man' | 'woman' = 'all') =>
+    request<{ profiles: PublicProfile[] }>(`/api/discover?gender=${gender}`),
 
   likeProfile: (targetUserId: string) =>
     request<{ matched: boolean; match: MatchSummary | null }>('/api/discover/like', {

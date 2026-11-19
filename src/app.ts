@@ -298,7 +298,11 @@ apiRouter.get(
   requireCompleteProfile,
   async (req: AuthRequest, res: Response) => {
     try {
-      const profiles = await getDiscoverQueue(req.user!.uid);
+      const gender = typeof req.query.gender === 'string' ? req.query.gender : 'all';
+      if (gender !== 'all' && gender !== 'man' && gender !== 'woman') {
+        return res.status(400).json({ error: 'Invalid gender filter.' });
+      }
+      const profiles = await getDiscoverQueue(req.user!.uid, gender);
       res.json({ profiles });
     } catch (error) {
       sendError(res, error, 'Failed to load discovery feed.');
