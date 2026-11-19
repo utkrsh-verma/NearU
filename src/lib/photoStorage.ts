@@ -71,19 +71,25 @@ export function saveBase64ProfilePhoto(
     throw new Error('File contents do not match the declared image format.');
   }
 
-  ensureUploadDir();
+  // Best-effort local file write for local development
+  try {
+    ensureUploadDir();
+    const safeUid = userId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const rand = crypto.randomBytes(6).toString('hex');
+    const ext = MIME_TO_EXT[mimeType] || 'webp';
+    const filename = `${safeUid}_slot${displayOrder}_${Date.now()}_${rand}.${ext}`;
+    const fullPath = path.join(UPLOADS_DIR, filename);
+    fs.writeFileSync(fullPath, buffer);
+  } catch (err) {
+    console.warn('Local photo storage write skipped/failed:', err);
+  }
 
-  const safeUid = userId.replace(/[^a-zA-Z0-9_-]/g, '');
-  const rand = crypto.randomBytes(6).toString('hex');
-  const ext = MIME_TO_EXT[mimeType] || 'webp';
-  const filename = `${safeUid}_slot${displayOrder}_${Date.now()}_${rand}.${ext}`;
-  const fullPath = path.join(UPLOADS_DIR, filename);
-
-  fs.writeFileSync(fullPath, buffer);
-  return { storagePath: filename, mimeType };
+  // Store dataUrl directly to guarantee persistence across all stateless serverless instances
+  return { storagePath: dataUrl, mimeType };
 }
 
 export function deleteStoredPhotoFile(storagePath: string) {
+  if (!storagePath || storagePath.startsWith('data:')) return;
   try {
     const safeName = path.basename(storagePath);
     const fullPath = path.join(UPLOADS_DIR, safeName);
@@ -96,6 +102,7 @@ export function deleteStoredPhotoFile(storagePath: string) {
 }
 
 export function resolveStoredPhotoPath(storagePath: string): string | null {
+  if (!storagePath || storagePath.startsWith('data:')) return null;
   const safeName = path.basename(storagePath);
   const fullPath = path.join(UPLOADS_DIR, safeName);
   if (!fs.existsSync(fullPath)) return null;

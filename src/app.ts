@@ -280,6 +280,18 @@ apiRouter.get('/photos/:photoId', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Photo not found.' });
   }
 
+  // If photo is stored directly as base64 data URL (serverless safe)
+  if (record.storagePath && record.storagePath.startsWith('data:')) {
+    const match = record.storagePath.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      const mime = match[1];
+      const buffer = Buffer.from(match[2], 'base64');
+      res.setHeader('Content-Type', mime || record.mimeType || 'image/webp');
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      return res.end(buffer);
+    }
+  }
+
   const filePath = resolveStoredPhotoPath(record.storagePath);
   if (!filePath) {
     return res.status(404).json({ error: 'Photo file unavailable.' });
