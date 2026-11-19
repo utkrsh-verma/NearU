@@ -55,6 +55,8 @@ export const profilePhotos = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     storagePath: text('storage_path').notNull(),
+    // Temporary safety copy used only while legacy data URLs are migrated to Storage.
+    legacyDataUrl: text('legacy_data_url'),
     mimeType: text('mime_type').notNull().default('image/webp'),
     displayOrder: integer('display_order').notNull(), // 1 or 2
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

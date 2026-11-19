@@ -104,10 +104,10 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  uploadPhoto: (displayOrder: 1 | 2, dataUrl: string) =>
+  uploadPhoto: (displayOrder: 1 | 2, storagePath: string) =>
     request<{ photo: ProfilePhoto; profile: MyProfile }>('/api/me/photos', {
       method: 'POST',
-      body: JSON.stringify({ displayOrder, dataUrl }),
+      body: JSON.stringify({ displayOrder, storagePath }),
     }),
 
   swapPhotos: () =>

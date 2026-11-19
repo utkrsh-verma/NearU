@@ -18,8 +18,10 @@ import {
   validateMinimumAge,
 } from '../lib/campusEligibility.ts';
 import {
+  createPublicStorageUrl,
   createSignedPhotoUrl,
   deleteStoredPhotoFile,
+  isLegacyDataUrl,
 } from '../lib/photoStorage.ts';
 
 export class AppQueryError extends Error {
@@ -98,7 +100,10 @@ function formatPhoto(row: typeof profilePhotos.$inferSelect): PublicPhotoDTO {
   return {
     id: row.id,
     displayOrder: row.displayOrder,
-    url: createSignedPhotoUrl(row.id),
+    // Legacy Data URLs remain available during migration; new paths resolve via the CDN.
+    url: isLegacyDataUrl(row.storagePath)
+      ? createSignedPhotoUrl(row.id)
+      : createPublicStorageUrl(row.storagePath),
   };
 }
 
@@ -467,7 +472,7 @@ export async function upsertProfilePhoto(
         .set({ storagePath, mimeType, createdAt: new Date() })
         .where(eq(profilePhotos.id, existing[0].id))
         .returning();
-      deleteStoredPhotoFile(oldPath);
+      await deleteStoredPhotoFile(oldPath);
       return formatPhoto(updated[0]);
     }
 
@@ -1184,7 +1189,7 @@ export async function deleteUserAccount(uid: string): Promise<{
     await db.delete(profiles).where(eq(profiles.id, uid));
 
     for (const photo of photoRows) {
-      deleteStoredPhotoFile(photo.storagePath);
+      await deleteStoredPhotoFile(photo.storagePath);
     }
 
     return { affectedMatches };

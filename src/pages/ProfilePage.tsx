@@ -21,6 +21,7 @@ import {
   YEAR_OPTIONS,
 } from '../lib/constants';
 import { compressProfilePhoto } from '../lib/imageCompression';
+import { removeUploadedProfilePhoto, uploadProfilePhoto } from '../lib/profilePhotoUpload';
 import { AvatarPhoto } from '../components/AvatarPhoto';
 import { ProfileCardView } from '../components/ProfileCardView';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -67,8 +68,10 @@ export function ProfilePage() {
     setSavedNotice(null);
     setUploadingSlot(slot);
     try {
-      const compressed = await compressProfilePhoto(file);
-      const { profile: updated } = await api.uploadPhoto(slot, compressed);
+      const storagePath = await uploadProfilePhoto(await compressProfilePhoto(file), profile.id);
+      let updated;
+      try { ({ profile: updated } = await api.uploadPhoto(slot, storagePath)); }
+      catch (error) { await removeUploadedProfilePhoto(storagePath); throw error; }
       setProfile(updated);
       setSavedNotice(`Photo ${slot} updated.`);
     } catch (err: any) {
