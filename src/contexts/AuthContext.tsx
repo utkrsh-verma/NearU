@@ -1,17 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import {
-  User,
-  deleteUser,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut as firebaseSignOut,
-} from 'firebase/auth';
-import { auth, googleAuthProvider } from '../lib/firebase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import { api } from '../services/api';
 import { CampusConfig, MyProfile } from '../types/nearu';
 
 interface AuthContextValue {
-  firebaseUser: User | null;
+  user: SupabaseUser | null;
   profile: MyProfile | null;
   campusConfig: CampusConfig | null;
   loading: boolean;
@@ -28,7 +22,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +47,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (!auth.currentUser) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.user) {
       setProfile(null);
       return;
     }
@@ -67,44 +64,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-      if (!user) {
+    let mounted = true;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (!currentUser) {
         setProfile(null);
         setLoading(false);
         return;
       }
 
-      setLoading(true);
       try {
         const { profile: loaded } = await api.getMe();
-        setProfile(loaded);
-        setAuthError(null);
+        if (mounted) {
+          setProfile(loaded);
+          setAuthError(null);
+        }
       } catch (err: any) {
-        setAuthError(
-          err?.message || 'Could not load your account. Please try signing in again.'
-        );
+        if (mounted) {
+          setAuthError(
+            err?.message || 'Could not load your account. Please try signing in again.'
+          );
+        }
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (event === 'SIGNED_OUT' || !currentUser) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        try {
+          const { profile: loaded } = await api.getMe();
+          if (mounted) {
+            setProfile(loaded);
+            setAuthError(null);
+          }
+        } catch (err: any) {
+          if (mounted) {
+            setAuthError(
+              err?.message || 'Could not load your account. Please try signing in again.'
+            );
+          }
+        } finally {
+          if (mounted) setLoading(false);
+        }
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
     setSigningIn(true);
     setAuthError(null);
     try {
-      await signInWithPopup(auth, googleAuthProvider);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
+      });
+      if (error) throw error;
     } catch (err: any) {
-      if (err?.code === 'auth/popup-closed-by-user') {
-        setAuthError('Sign-in was cancelled. Click Continue with Google to try again.');
-      } else if (err?.code === 'auth/popup-blocked') {
-        setAuthError('Pop-up was blocked by your browser. Please allow pop-ups and try again.');
-      } else {
-        setAuthError(err?.message || 'Google sign-in failed. Please try again.');
-      }
+      setAuthError(err?.message || 'Google sign-in failed. Please try again.');
     } finally {
       setSigningIn(false);
     }
@@ -113,7 +155,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     setAuthError(null);
     try {
-      await firebaseSignOut(auth);
+      await supabase.auth.signOut();
+      setUser(null);
       setProfile(null);
     } catch (err: any) {
       setAuthError(err?.message || 'Could not sign out cleanly. Please refresh.');
@@ -122,20 +165,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAccount = useCallback(async () => {
     setAuthError(null);
-    const currentUser = auth.currentUser;
     await api.deleteAccount();
-    if (currentUser) {
-      try {
-        await deleteUser(currentUser);
-      } catch {
-        try {
-          await firebaseSignOut(auth);
-        } catch {
-          // Ignore sign-out error after account deletion
-        }
-      }
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Ignore sign-out error after account deletion
     }
-    setFirebaseUser(null);
+    setUser(null);
     setProfile(null);
   }, []);
 
@@ -144,7 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        firebaseUser,
+        user,
         profile,
         campusConfig,
         loading,

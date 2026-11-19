@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { ChatMessage, MatchSummary } from '../types/nearu';
 
 export interface RealtimeHandlers {
@@ -25,14 +25,18 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers) {
     let hasConnectedOnce = false;
 
     const connect = async () => {
-      if (!active || !auth.currentUser) return;
+      if (!active) return;
 
-      let token: string;
+      let token: string | undefined;
       try {
-        token = await auth.currentUser.getIdToken();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        token = session?.access_token;
       } catch {
         return;
       }
+      if (!token) return;
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = `${protocol}//${window.location.host}/ws`;

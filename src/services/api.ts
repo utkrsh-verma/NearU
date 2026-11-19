@@ -1,4 +1,4 @@
-import { auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import {
   CampusConfig,
   ChatMessage,
@@ -19,11 +19,13 @@ export class ApiError extends Error {
 }
 
 async function getBearerToken(): Promise<string> {
-  const user = auth.currentUser;
-  if (!user) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.access_token) {
     throw new ApiError('Please sign in to continue.', 401);
   }
-  return await user.getIdToken();
+  return session.access_token;
 }
 
 async function request<T>(

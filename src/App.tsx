@@ -232,7 +232,7 @@ function AuthenticatedWorkspace() {
 }
 
 function NearURouter() {
-  const { firebaseUser, profile, loading, authError, refreshProfile, signOut } = useAuth();
+  const { user, profile, loading, authError, refreshProfile, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -245,7 +245,7 @@ function NearURouter() {
     );
   }
 
-  if (!firebaseUser) {
+  if (!user) {
     return <LandingPage />;
   }
 

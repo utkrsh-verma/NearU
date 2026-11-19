@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
 import { WebSocketServer, WebSocket } from 'ws';
-import { adminAuth } from './src/lib/firebase-admin.ts';
+import { supabaseAdmin } from './src/lib/supabase-admin.ts';
 import { getCampusConfig } from './src/lib/campusEligibility.ts';
 import {
   resolveStoredPhotoPath,
@@ -41,7 +41,7 @@ import {
 const PORT = Number(process.env.PORT) || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-// Connected WebSocket clients indexed by Firebase UID
+// Connected WebSocket clients indexed by User ID
 const userSockets = new Map<string, Set<WebSocket>>();
 
 function registerSocket(uid: string, ws: WebSocket) {
@@ -121,8 +121,16 @@ async function startServer() {
       try {
         const msg = JSON.parse(raw.toString());
         if (msg?.type === 'auth' && typeof msg.token === 'string') {
-          const decoded = await adminAuth.verifyIdToken(msg.token);
-          const row = await getProfileRow(decoded.uid);
+          const {
+            data: { user },
+            error,
+          } = await supabaseAdmin.auth.getUser(msg.token);
+          if (error || !user) {
+            ws.send(JSON.stringify({ type: 'auth:error', error: 'Authentication failed' }));
+            ws.close(4001, 'Authentication failed');
+            return;
+          }
+          const row = await getProfileRow(user.id);
           if (!row || !row.isVerified || !row.isProfileComplete || !row.isActive) {
             ws.send(JSON.stringify({ type: 'auth:error', error: 'Profile ineligible' }));
             ws.close(4003, 'Profile ineligible');
@@ -131,7 +139,7 @@ async function startServer() {
           if (authenticatedUid) {
             unregisterSocket(authenticatedUid, ws);
           }
-          authenticatedUid = decoded.uid;
+          authenticatedUid = user.id;
           clearTimeout(authTimeout);
           registerSocket(authenticatedUid, ws);
           ws.send(JSON.stringify({ type: 'auth:ok', uid: authenticatedUid }));
@@ -193,6 +201,12 @@ async function startServer() {
       }
 
       disconnectUserSockets(uid);
+
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(uid);
+      } catch (adminErr) {
+        console.warn('Could not delete user from Supabase Auth admin:', adminErr);
+      }
 
       res.json({ ok: true });
     } catch (error) {

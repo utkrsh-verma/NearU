@@ -11,11 +11,11 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-// Profiles table keyed directly by Firebase Auth UID
+// Profiles table keyed directly by Supabase Auth User ID (UUID)
 export const profiles = pgTable(
   'profiles',
   {
-    id: text('id').primaryKey(), // Firebase Auth UID
+    id: text('id').primaryKey(), // Supabase Auth User ID (UUID)
     email: text('email').notNull().unique(),
     collegeEmail: text('college_email'),
     rollNumber: text('roll_number'),
