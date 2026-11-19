@@ -2,7 +2,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads', 'photos');
+const UPLOADS_DIR = process.env.VERCEL
+  ? path.resolve('/tmp', 'photos')
+  : path.resolve(process.cwd(), 'uploads', 'photos');
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_FILE_BYTES = 2.5 * 1024 * 1024; // 2.5 MB limit after client compression
 
