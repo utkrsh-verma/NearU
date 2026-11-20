@@ -24,6 +24,7 @@ function AuthenticatedWorkspace() {
   const [celebrationMatch, setCelebrationMatch] = useState<MatchSummary | null>(null);
   const [likesTotal, setLikesTotal] = useState(0);
   const [likesRefreshToken, setLikesRefreshToken] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
 
   const refreshLikes = useCallback(async () => {
     try {
@@ -122,6 +123,10 @@ function AuthenticatedWorkspace() {
   }, []);
 
   // Live WebSocket connection for real-time 1-on-1 messaging & match updates
+  const watchedUserId = selectedMatchId === null
+    ? undefined
+    : matches.find((match) => match.id === selectedMatchId)?.partner.id;
+
   useRealtime(Boolean(profile?.isProfileComplete), {
     onMessageCreated: (matchId, message) => {
       appendMessageIdempotent(matchId, message);
@@ -140,6 +145,24 @@ function AuthenticatedWorkspace() {
           ),
         };
       });
+    },
+    onMessageDelivered: (matchId, messageId) => {
+      setMessagesByMatch((prev) => ({
+        ...prev,
+        [matchId]: (prev[matchId] || []).map((message) =>
+          message.id === messageId ? { ...message, deliveredAt: new Date().toISOString() } : message
+        ),
+      }));
+    },
+    onMessageDeleted: (matchId, messageId) => {
+      setMessagesByMatch((prev) => ({
+        ...prev,
+        [matchId]: (prev[matchId] || []).filter((message) => message.id !== messageId),
+      }));
+      loadMatches();
+    },
+    onPresenceUpdated: (userId, online) => {
+      setOnlineUsers((previous) => ({ ...previous, [userId]: online }));
     },
     onMatchCreated: (match) => {
       setMatches((prev) => {
@@ -162,7 +185,7 @@ function AuthenticatedWorkspace() {
         loadMessages(selectedMatchId).catch(() => {});
       }
     },
-  });
+  }, watchedUserId);
 
   const handleSendMessage = useCallback(
     async (matchId: number, content: string) => {
@@ -171,6 +194,10 @@ function AuthenticatedWorkspace() {
     },
     [appendMessageIdempotent]
   );
+
+  const handleDeleteMessage = useCallback(async (messageId: number) => {
+    await api.deleteMessage(messageId);
+  }, []);
 
   const handleOpenMatchChat = useCallback((match: MatchSummary) => {
     setCelebrationMatch(null);
@@ -243,6 +270,8 @@ function AuthenticatedWorkspace() {
           onRefreshMatches={loadMatches}
           onLoadMessages={loadMessages}
           onSendMessage={handleSendMessage}
+          onDeleteMessage={handleDeleteMessage}
+          onlinePartner={watchedUserId ? Boolean(onlineUsers[watchedUserId]) : false}
           onMarkRead={markMatchRead}
           onMatchRemovedLocally={handleMatchRemoved}
           onGoToDiscover={() => setActiveTab('discover')}

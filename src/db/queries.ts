@@ -52,6 +52,7 @@ export interface PublicProfileDTO {
   lookingFor: string | null;
   interests: string[];
   isVerified: boolean;
+  lastSeenAt: string | null;
   photos: PublicPhotoDTO[];
   sharedInterests?: string[];
 }
@@ -83,6 +84,8 @@ export interface MatchDTO {
     content: string;
     createdAt: string;
     readAt: string | null;
+    deliveredAt: string | null;
+    deletedAt: string | null;
   } | null;
   unreadCount: number;
 }
@@ -94,6 +97,8 @@ export interface MessageDTO {
   content: string;
   createdAt: string;
   readAt: string | null;
+  deliveredAt: string | null;
+  deletedAt: string | null;
 }
 
 function canonicalPair(a: string, b: string): [string, string] {
@@ -136,6 +141,7 @@ function toPublicProfile(
     lookingFor: row.lookingFor,
     interests: userInterests,
     isVerified: row.isVerified,
+    lastSeenAt: row.lastSeenAt ? row.lastSeenAt.toISOString() : null,
     photos: sortedPhotos,
     sharedInterests: shared,
   };
@@ -1093,7 +1099,7 @@ export async function getActiveMatches(
       db
         .select()
         .from(messages)
-        .where(inArray(messages.matchId, matchIds))
+        .where(and(inArray(messages.matchId, matchIds), isNull(messages.deletedAt)))
         .orderBy(desc(messages.createdAt)),
     ]);
 
@@ -1147,6 +1153,8 @@ export async function getActiveMatches(
               content: last.content,
               createdAt: last.createdAt.toISOString(),
               readAt: last.readAt ? last.readAt.toISOString() : null,
+              deliveredAt: last.deliveredAt ? last.deliveredAt.toISOString() : null,
+              deletedAt: last.deletedAt ? last.deletedAt.toISOString() : null,
             }
           : null,
         unreadCount: unreadCountByMatch.get(m.id) || 0,
@@ -1201,6 +1209,13 @@ export async function getMatchMessages(
 ): Promise<MessageDTO[]> {
   await assertActiveMatchParticipant(matchId, uid);
   try {
+    // Delivery is one batch update when the recipient fetches the active thread.
+    await db.update(messages).set({ deliveredAt: new Date() }).where(and(
+      eq(messages.matchId, matchId),
+      ne(messages.senderId, uid),
+      isNull(messages.deliveredAt),
+      isNull(messages.deletedAt)
+    ));
     const rows = await db
       .select()
       .from(messages)
@@ -1215,6 +1230,8 @@ export async function getMatchMessages(
       content: r.content,
       createdAt: r.createdAt.toISOString(),
       readAt: r.readAt ? r.readAt.toISOString() : null,
+      deliveredAt: r.deliveredAt ? r.deliveredAt.toISOString() : null,
+      deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
     }));
   } catch (error) {
     console.error('Database query failed (getMatchMessages):', error);
@@ -1268,6 +1285,8 @@ export async function createMatchMessage(
         content: inserted.content,
         createdAt: inserted.createdAt.toISOString(),
         readAt: inserted.readAt ? inserted.readAt.toISOString() : null,
+        deliveredAt: inserted.deliveredAt ? inserted.deliveredAt.toISOString() : null,
+        deletedAt: inserted.deletedAt ? inserted.deletedAt.toISOString() : null,
       },
     };
   } catch (error) {
@@ -1293,7 +1312,8 @@ export async function markMatchMessagesRead(
         and(
           eq(messages.matchId, matchId),
           ne(messages.senderId, readerId),
-          isNull(messages.readAt)
+          isNull(messages.readAt),
+          isNull(messages.deletedAt)
         )
       )
       .returning({ id: messages.id });
@@ -1304,6 +1324,46 @@ export async function markMatchMessagesRead(
     console.error('Database query failed (markMatchMessagesRead):', error);
     return null;
   }
+}
+
+export async function deleteMatchMessage(messageId: number, uid: string): Promise<{ matchId: number; partnerId: string }> {
+  try {
+    const rows = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
+    const message = rows[0];
+    if (!message || message.senderId !== uid || message.deletedAt) throw new AppQueryError('Message is unavailable.', 404);
+    const { partnerId } = await assertActiveMatchParticipant(message.matchId, uid);
+    const updated = await db.update(messages).set({ deletedAt: new Date(), content: '' })
+      .where(and(eq(messages.id, messageId), eq(messages.senderId, uid), isNull(messages.deletedAt)))
+      .returning({ id: messages.id });
+    if (!updated.length) throw new AppQueryError('Message is unavailable.', 404);
+    return { matchId: message.matchId, partnerId };
+  } catch (error) {
+    if (error instanceof AppQueryError) throw error;
+    console.error('Database query failed (deleteMatchMessage):', error);
+    throw new AppQueryError('Could not delete this message.', 500);
+  }
+}
+
+export async function markMessageDelivered(messageId: number): Promise<void> {
+  await db.update(messages).set({ deliveredAt: new Date() })
+    .where(and(eq(messages.id, messageId), isNull(messages.deliveredAt), isNull(messages.deletedAt)));
+}
+
+export async function updateLastSeen(uid: string): Promise<void> {
+  try {
+    await db.update(profiles).set({ lastSeenAt: new Date() }).where(eq(profiles.id, uid));
+  } catch (error) {
+    console.warn('Could not update last seen:', error);
+  }
+}
+
+export async function canWatchPresence(uid: string, partnerId: string): Promise<boolean> {
+  if (uid === partnerId || await hasBlockBetween(uid, partnerId)) return false;
+  const [user1Id, user2Id] = canonicalPair(uid, partnerId);
+  const rows = await db.select({ id: matches.id }).from(matches).where(and(
+    eq(matches.user1Id, user1Id), eq(matches.user2Id, user2Id), eq(matches.status, 'active')
+  )).limit(1);
+  return rows.length > 0;
 }
 
 export async function unmatchById(

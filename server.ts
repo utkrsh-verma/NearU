@@ -3,9 +3,9 @@ import http from 'node:http';
 import path from 'node:path';
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
-import { app, registerSocket, unregisterSocket } from './src/app.ts';
+import { app, registerSocket, unregisterSocket, userSockets } from './src/app.ts';
 import { supabaseAdmin } from './src/lib/supabase-admin.ts';
-import { getProfileRow } from './src/db/queries.ts';
+import { canWatchPresence, getProfileRow, updateLastSeen } from './src/db/queries.ts';
 
 const PORT = Number(process.env.PORT) || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -15,6 +15,14 @@ async function startServer() {
 
   // Real-time WebSocket server attached to HTTP server
   const wss = new WebSocketServer({ server, path: '/ws' });
+  const presenceWatches = new Map<WebSocket, string>();
+  const notifyPresence = (uid: string, online: boolean) => {
+    for (const [watcher, watchedUid] of presenceWatches) {
+      if (watchedUid === uid && watcher.readyState === WebSocket.OPEN) {
+        watcher.send(JSON.stringify({ type: 'presence:updated', userId: uid, online }));
+      }
+    }
+  };
 
   wss.on('connection', (ws) => {
     let authenticatedUid: string | null = null;
@@ -51,6 +59,14 @@ async function startServer() {
           clearTimeout(authTimeout);
           registerSocket(authenticatedUid, ws);
           ws.send(JSON.stringify({ type: 'auth:ok', uid: authenticatedUid }));
+          notifyPresence(authenticatedUid, true);
+        } else if (msg?.type === 'watch:partner' && authenticatedUid && typeof msg.partnerId === 'string') {
+          if (!(await canWatchPresence(authenticatedUid, msg.partnerId))) {
+            ws.send(JSON.stringify({ type: 'presence:error' }));
+            return;
+          }
+          presenceWatches.set(ws, msg.partnerId);
+          ws.send(JSON.stringify({ type: 'presence:updated', userId: msg.partnerId, online: Boolean(userSockets.get(msg.partnerId)?.size) }));
         } else if (msg?.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }));
         }
@@ -62,8 +78,13 @@ async function startServer() {
 
     ws.on('close', () => {
       clearTimeout(authTimeout);
+      presenceWatches.delete(ws);
       if (authenticatedUid) {
         unregisterSocket(authenticatedUid, ws);
+        if (!userSockets.has(authenticatedUid)) {
+          updateLastSeen(authenticatedUid);
+          notifyPresence(authenticatedUid, false);
+        }
       }
     });
   });
