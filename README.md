@@ -38,6 +38,13 @@ Apply the database schema and RLS policies using Supabase SQL editor or CLI from
 supabase/migrations/001_nearu_schema_and_rls.sql
 ```
 
+For the **Passed Profiles** feature, also apply (after 001; safe to re-run):
+```
+supabase/migrations/003_passed_profiles.sql
+```
+It reuses the existing `passes` table, adds an index, and replaces the broad passes policy with
+explicit own-rows-only SELECT / INSERT / DELETE policies (no UPDATE).
+
 ### 4. Run Locally
 ```bash
 # Install dependencies
