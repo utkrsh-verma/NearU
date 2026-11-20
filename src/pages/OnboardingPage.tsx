@@ -216,6 +216,7 @@ export function OnboardingPage() {
     lookingFor: lookingFor || null,
     interests,
     isVerified: Boolean(profile?.isVerified),
+    lastSeenAt: null,
     photos,
   };
 

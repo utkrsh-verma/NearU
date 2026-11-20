@@ -36,6 +36,7 @@ export const profiles = pgTable(
     interests: jsonb('interests').$type<string[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   },
   (table) => [
     index('idx_profiles_eligible').on(
@@ -143,6 +144,8 @@ export const messages = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),
     readAt: timestamp('read_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [index('idx_messages_match_created').on(table.matchId, table.createdAt)]

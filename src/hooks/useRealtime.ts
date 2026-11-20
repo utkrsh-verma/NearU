@@ -8,10 +8,13 @@ export interface RealtimeHandlers {
   onMatchCreated?: (match: MatchSummary) => void;
   onMatchRemoved?: (matchId: number) => void;
   onLikesUpdated?: () => void;
+  onMessageDeleted?: (matchId: number, messageId: number) => void;
+  onMessageDelivered?: (matchId: number, messageId: number) => void;
+  onPresenceUpdated?: (userId: string, online: boolean) => void;
   onReconnected?: () => void;
 }
 
-export function useRealtime(enabled: boolean, handlers: RealtimeHandlers) {
+export function useRealtime(enabled: boolean, handlers: RealtimeHandlers, watchedUserId?: string) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
@@ -58,6 +61,7 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers) {
                 handlersRef.current.onReconnected?.();
               }
               hasConnectedOnce = true;
+              if (watchedUserId && ws) ws.send(JSON.stringify({ type: 'watch:partner', partnerId: watchedUserId }));
               if (pingTimer) clearInterval(pingTimer);
               pingTimer = setInterval(() => {
                 if (ws && ws.readyState === WebSocket.OPEN) {
@@ -83,6 +87,15 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers) {
               break;
             case 'likes:updated':
               handlersRef.current.onLikesUpdated?.();
+              break;
+            case 'message:deleted':
+              handlersRef.current.onMessageDeleted?.(data.matchId, data.messageId);
+              break;
+            case 'messages:delivered':
+              handlersRef.current.onMessageDelivered?.(data.matchId, data.messageId);
+              break;
+            case 'presence:updated':
+              handlersRef.current.onPresenceUpdated?.(data.userId, Boolean(data.online));
               break;
             default:
               break;
@@ -119,5 +132,5 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers) {
         ws.close();
       }
     };
-  }, [enabled]);
+  }, [enabled, watchedUserId]);
 }

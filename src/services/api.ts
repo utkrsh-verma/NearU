@@ -148,6 +148,9 @@ export const api = {
       method: 'POST',
     }),
 
+  deleteMessage: (messageId: number) =>
+    request<{ ok: boolean; matchId: number }>(`/api/messages/${messageId}`, { method: 'DELETE' }),
+
   unmatch: (matchId: number) =>
     request<{ ok: boolean }>(`/api/matches/${matchId}/unmatch`, {
       method: 'POST',

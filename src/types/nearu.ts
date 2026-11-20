@@ -26,6 +26,7 @@ export interface PublicProfile {
   lookingFor: string | null;
   interests: string[];
   isVerified: boolean;
+  lastSeenAt: string | null;
   photos: ProfilePhoto[];
   sharedInterests?: string[];
 }
@@ -48,6 +49,8 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   readAt: string | null;
+  deliveredAt: string | null;
+  deletedAt: string | null;
 }
 
 export interface MatchSummary {

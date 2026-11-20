@@ -17,6 +17,7 @@ import {
   AppQueryError,
   blockUser,
   createMatchMessage,
+  deleteMatchMessage,
   deleteUserAccount,
   getActiveMatches,
   getDiscoverQueue,
@@ -25,6 +26,7 @@ import {
   getMyFullProfile,
   getPhotoRecordById,
   markMatchMessagesRead,
+  markMessageDelivered,
   recordLikeAndCheckMatch,
   recordPass,
   swapProfilePhotos,
@@ -444,12 +446,33 @@ apiRouter.post(
         message,
       });
 
+      // The message is delivered immediately when the recipient has an active session.
+      if (userSockets.has(partnerId)) {
+        await markMessageDelivered(message.id);
+        message.deliveredAt = new Date().toISOString();
+        emitToUser(req.user!.uid, { type: 'messages:delivered', matchId, messageId: message.id });
+      }
+
       res.status(201).json({ message });
     } catch (error) {
       sendError(res, error, 'Failed to send message.');
     }
   }
 );
+
+apiRouter.delete('/messages/:messageId', requireAuth, requireCompleteProfile, async (req: AuthRequest, res: Response) => {
+  try {
+    const messageId = parsePositiveInt(req.params.messageId);
+    if (messageId === null) return res.status(400).json({ error: 'Invalid message ID.' });
+    const result = await deleteMatchMessage(messageId, req.user!.uid);
+    const event = { type: 'message:deleted', matchId: result.matchId, messageId };
+    emitToUser(req.user!.uid, event);
+    emitToUser(result.partnerId, event);
+    res.json({ ok: true, matchId: result.matchId });
+  } catch (error) {
+    sendError(res, error, 'Could not delete this message.');
+  }
+});
 
 // Mark read
 apiRouter.post(

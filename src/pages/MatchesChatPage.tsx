@@ -13,12 +13,14 @@ import {
   ShieldAlert,
   ShieldCheck,
   UserX,
+  Trash2,
 } from 'lucide-react';
 import { ChatMessage, MatchSummary, MyProfile } from '../types/nearu';
 import { api } from '../services/api';
 import { buildIcebreakers } from '../lib/constants';
 import { AvatarPhoto } from '../components/AvatarPhoto';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { formatLastSeen } from '../lib/presenceStatus';
 
 interface MatchesChatPageProps {
   me: MyProfile;
@@ -31,6 +33,8 @@ interface MatchesChatPageProps {
   onRefreshMatches: () => void;
   onLoadMessages: (matchId: number) => Promise<void>;
   onSendMessage: (matchId: number, content: string) => Promise<void>;
+  onDeleteMessage: (messageId: number) => Promise<void>;
+  onlinePartner: boolean;
   onMarkRead: (matchId: number) => void;
   onMatchRemovedLocally: (matchId: number) => void;
   onGoToDiscover: () => void;
@@ -65,6 +69,8 @@ export function MatchesChatPage({
   onRefreshMatches,
   onLoadMessages,
   onSendMessage,
+  onDeleteMessage,
+  onlinePartner,
   onMarkRead,
   onMatchRemovedLocally,
   onGoToDiscover,
@@ -76,8 +82,11 @@ export function MatchesChatPage({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmMode, setConfirmMode] = useState<'unmatch' | 'block' | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageStreamRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
 
   const activeMatch =
     matches.find((m) => m.id === selectedMatchId) || null;
@@ -96,7 +105,7 @@ export function MatchesChatPage({
     setChatLoading(true);
     onLoadMessages(selectedMatchId)
       .then(() => {
-        if (!cancelled) onMarkRead(selectedMatchId);
+        if (!cancelled) shouldAutoScrollRef.current = true;
       })
       .catch((err: any) => {
         if (!cancelled) {
@@ -111,10 +120,17 @@ export function MatchesChatPage({
     };
   }, [selectedMatchId, onLoadMessages, onMarkRead]);
 
-  // Auto-scroll to newest message
+  // Keep readers in place when they scroll back; only follow new messages at the bottom.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (shouldAutoScrollRef.current) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages.length, selectedMatchId]);
+
+  // Batch the existing read receipt only after the rendered thread has been visible.
+  useEffect(() => {
+    if (selectedMatchId === null || chatLoading || activeMessages.length === 0 || document.visibilityState !== 'visible') return;
+    const timer = window.setTimeout(() => onMarkRead(selectedMatchId), 300);
+    return () => window.clearTimeout(timer);
+  }, [selectedMatchId, chatLoading, activeMessages.length, onMarkRead]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,6 +181,19 @@ export function MatchesChatPage({
       setChatError(err?.message || 'Action could not be completed.');
     } finally {
       setConfirmLoading(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: number) => {
+    if (!window.confirm('Delete this message for everyone? This cannot be undone.')) return;
+    setDeletingMessageId(messageId);
+    setChatError(null);
+    try {
+      await onDeleteMessage(messageId);
+    } catch (err: any) {
+      setChatError(err?.message || 'Could not delete this message.');
+    } finally {
+      setDeletingMessageId(null);
     }
   };
 
@@ -423,9 +452,9 @@ export function MatchesChatPage({
                       )}
                     </div>
                     <p className="text-xs text-[#9CA3AF] truncate">
-                      {[activeMatch.partner.branch, activeMatch.partner.batchYear ? `Batch ${activeMatch.partner.batchYear}` : null]
-                        .filter(Boolean)
-                        .join(' · ')}
+                      <span className={onlinePartner ? 'text-[#4ADE80]' : undefined}>
+                        {onlinePartner ? '● Online' : formatLastSeen(activeMatch.partner.lastSeenAt)}
+                      </span>
                     </p>
                   </div>
                 </div>
@@ -487,7 +516,10 @@ export function MatchesChatPage({
               </div>
 
               {/* Messages Stream */}
-              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-3">
+              <div ref={messageStreamRef} onScroll={(event) => {
+                const node = event.currentTarget;
+                shouldAutoScrollRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 96;
+              }} className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-3">
                 {chatError && (
                   <div
                     role="alert"
@@ -545,10 +577,11 @@ export function MatchesChatPage({
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+                        className={`group flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
                       >
+                        <div className="flex items-start gap-1.5 max-w-[90%] sm:max-w-[75%]">
                         <div
-                          className={`max-w-[82%] sm:max-w-[70%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${
+                          className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${
                             isMine
                               ? 'bg-[#E05A6D] text-white rounded-br-md'
                               : 'bg-[#1A1B20] border border-[#2A2B32] text-[#F3F4F6] rounded-bl-md'
@@ -556,14 +589,22 @@ export function MatchesChatPage({
                         >
                           {msg.content}
                         </div>
+                        {isMine && (
+                          <button type="button" onClick={() => handleDeleteMessage(msg.id)} disabled={deletingMessageId === msg.id} aria-label="Delete message" className="w-7 h-7 mt-1 rounded-lg text-[#9CA3AF] hover:text-[#E05A6D] hover:bg-[#1A1B20] flex items-center justify-center opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer disabled:opacity-40">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        </div>
                         <div className="mt-1 px-1 flex items-center gap-1 text-[11px] text-[#9CA3AF] tabular-nums">
                           <span>{formatMessageTime(msg.createdAt)}</span>
                           {isMine &&
                             (msg.readAt ? (
                               <CheckCheck
-                                className="w-3.5 h-3.5 text-[#F472B6]"
-                                aria-label="Read"
+                                className="w-3.5 h-3.5 text-[#60A5FA]"
+                                aria-label="Seen"
                               />
+                            ) : msg.deliveredAt ? (
+                              <CheckCheck className="w-3.5 h-3.5" aria-label="Delivered" />
                             ) : (
                               <Check className="w-3.5 h-3.5" aria-label="Sent" />
                             ))}
