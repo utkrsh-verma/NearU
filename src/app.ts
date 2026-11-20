@@ -22,11 +22,13 @@ import {
   getDiscoverQueue,
   getMatchMessages,
   getMyFullProfile,
+  getPassedProfiles,
   getPhotoRecordById,
   markMatchMessagesRead,
   recordLikeAndCheckMatch,
   recordPass,
   swapProfilePhotos,
+  undoPass,
   unmatchById,
   updateMyProfile,
   upsertProfilePhoto,
@@ -91,6 +93,15 @@ function parsePositiveInt(raw: string): number | null {
   if (!/^\d+$/.test(raw)) return null;
   const n = Number(raw);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+// Returns a normalised (trimmed, lower-case) UUID, or null if the value is not a valid UUID
+function parseUserId(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim().toLowerCase();
+  return UUID_PATTERN.test(value) ? value : null;
 }
 
 export const app = express();
@@ -360,6 +371,78 @@ apiRouter.post(
       res.json({ ok: true });
     } catch (error) {
       sendError(res, error, 'Could not record pass.');
+    }
+  }
+);
+
+// Previously passed profiles (kept separate from the normal discover feed)
+apiRouter.get(
+  '/discover/passed',
+  requireAuth,
+  requireCompleteProfile,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const gender = typeof req.query.gender === 'string' ? req.query.gender : 'all';
+      if (gender !== 'all' && gender !== 'man' && gender !== 'woman') {
+        return res.status(400).json({ error: 'Invalid gender filter.' });
+      }
+      const profiles = await getPassedProfiles(req.user!.uid, gender);
+      res.json({ profiles });
+    } catch (error) {
+      sendError(res, error, 'Failed to load passed profiles.');
+    }
+  }
+);
+
+// Undo a pass: removes the caller's own pass so the profile can appear in discovery again
+apiRouter.post(
+  '/discover/passed/undo',
+  requireAuth,
+  requireCompleteProfile,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const targetUserId = parseUserId(req.body?.targetUserId);
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'A valid target profile ID is required.' });
+      }
+
+      const { removed } = await undoPass(req.user!.uid, targetUserId);
+      res.json({ ok: true, removed });
+    } catch (error) {
+      sendError(res, error, 'Could not undo pass.');
+    }
+  }
+);
+
+// Like a previously passed profile (consumes the pass, then uses the normal like + match flow)
+apiRouter.post(
+  '/discover/passed/like',
+  requireAuth,
+  requireCompleteProfile,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const targetUserId = parseUserId(req.body?.targetUserId);
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'A valid target profile ID is required.' });
+      }
+
+      const result = await recordLikeAndCheckMatch(req.user!.uid, targetUserId, {
+        fromPassed: true,
+      });
+
+      if (result.matched && result.partnerMatchPayload) {
+        emitToUser(targetUserId, {
+          type: 'match:created',
+          match: result.partnerMatchPayload,
+        });
+      }
+
+      res.json({
+        matched: result.matched,
+        match: result.match || null,
+      });
+    } catch (error) {
+      sendError(res, error, 'Could not process like.');
     }
   }
 );

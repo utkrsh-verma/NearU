@@ -4,6 +4,7 @@ import {
   ChatMessage,
   MatchSummary,
   MyProfile,
+  PassedProfile,
   ProfilePhoto,
   PublicProfile,
 } from '../types/nearu';
@@ -126,6 +127,21 @@ export const api = {
 
   passProfile: (targetUserId: string) =>
     request<{ ok: boolean }>('/api/discover/pass', {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    }),
+
+  getPassedProfiles: (gender: 'all' | 'man' | 'woman' = 'all') =>
+    request<{ profiles: PassedProfile[] }>(`/api/discover/passed?gender=${gender}`),
+
+  undoPass: (targetUserId: string) =>
+    request<{ ok: boolean; removed: boolean }>('/api/discover/passed/undo', {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    }),
+
+  likePassedProfile: (targetUserId: string) =>
+    request<{ matched: boolean; match: MatchSummary | null }>('/api/discover/passed/like', {
       method: 'POST',
       body: JSON.stringify({ targetUserId }),
     }),

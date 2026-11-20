@@ -30,6 +30,10 @@ export interface PublicProfile {
   sharedInterests?: string[];
 }
 
+export interface PassedProfile extends PublicProfile {
+  passedAt: string;
+}
+
 export interface MyProfile extends PublicProfile {
   email: string;
   collegeEmail: string | null;

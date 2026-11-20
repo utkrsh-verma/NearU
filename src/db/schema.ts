@@ -105,6 +105,8 @@ export const passes = pgTable(
   (table) => [
     uniqueIndex('uq_passes_pair').on(table.passerId, table.passedId),
     index('idx_passes_passer_id').on(table.passerId),
+    // Powers the "Passed" view: a user's passes, most recent first
+    index('idx_passes_passer_created').on(table.passerId, table.createdAt.desc()),
   ]
 );
 

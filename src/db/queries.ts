@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, notExists, notInArray, or, sql } from 'drizzle-orm';
 import { db } from './index.ts';
 import {
   blocks,
@@ -54,6 +54,10 @@ export interface PublicProfileDTO {
   isVerified: boolean;
   photos: PublicPhotoDTO[];
   sharedInterests?: string[];
+}
+
+export interface PassedProfileDTO extends PublicProfileDTO {
+  passedAt: string;
 }
 
 export interface MyProfileDTO extends PublicProfileDTO {
@@ -668,7 +672,8 @@ export async function getDiscoverQueue(
 
 export async function recordLikeAndCheckMatch(
   likerId: string,
-  likedId: string
+  likedId: string,
+  options: { fromPassed?: boolean } = {}
 ): Promise<{
   matched: boolean;
   match?: MatchDTO;
@@ -709,6 +714,22 @@ export async function recordLikeAndCheckMatch(
     }
 
     const matchRecord = await db.transaction(async (tx) => {
+      // Liking from the Passed list consumes the pass in the same transaction, so the
+      // profile leaves the Passed list atomically with the like (and rolls back together).
+      if (options.fromPassed) {
+        const removed = await tx
+          .delete(passes)
+          .where(and(eq(passes.passerId, likerId), eq(passes.passedId, likedId)))
+          .returning({ id: passes.id });
+        if (removed.length === 0) {
+          throw new AppQueryError(
+            'This profile is no longer in your passed list.',
+            404,
+            'PASS_NOT_FOUND'
+          );
+        }
+      }
+
       await tx
         .insert(likes)
         .values({ likerId, likedId })
@@ -816,6 +837,139 @@ export async function recordPass(passerId: string, passedId: string): Promise<vo
     if (error instanceof AppQueryError) throw error;
     console.error('Database query failed (recordPass):', error);
     throw new AppQueryError('Could not record pass. Please try again.', 500);
+  }
+}
+
+const PASSED_PROFILES_LIMIT = 100;
+
+/**
+ * Profiles the user previously passed on, most recent pass first.
+ * Excludes: the user themself, anyone they have liked, matched with (any status) or blocked
+ * (in either direction), and profiles that are no longer eligible (unverified / incomplete /
+ * inactive / under 18). Kept separate from getDiscoverQueue on purpose.
+ */
+export async function getPassedProfiles(
+  uid: string,
+  genderFilter: DiscoverGenderFilter = 'all'
+): Promise<PassedProfileDTO[]> {
+  try {
+    const genderCondition =
+      genderFilter === 'man'
+        ? eq(profiles.gender, 'Man')
+        : genderFilter === 'woman'
+          ? eq(profiles.gender, 'Woman')
+          : undefined;
+
+    const meRows = await db
+      .select({ interests: profiles.interests })
+      .from(profiles)
+      .where(eq(profiles.id, uid))
+      .limit(1);
+    const myInterests = Array.isArray(meRows[0]?.interests) ? meRows[0].interests : [];
+
+    const rows = await db
+      .select({ profile: profiles, passedAt: passes.createdAt })
+      .from(passes)
+      .innerJoin(profiles, eq(profiles.id, passes.passedId))
+      .where(
+        and(
+          eq(passes.passerId, uid),
+          ne(passes.passedId, uid),
+          eq(profiles.isVerified, true),
+          eq(profiles.isProfileComplete, true),
+          eq(profiles.isActive, true),
+          genderCondition,
+          // not already liked by me
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(likes)
+              .where(and(eq(likes.likerId, uid), eq(likes.likedId, passes.passedId)))
+          ),
+          // not blocked in either direction
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(blocks)
+              .where(
+                or(
+                  and(eq(blocks.blockerId, uid), eq(blocks.blockedId, passes.passedId)),
+                  and(eq(blocks.blockerId, passes.passedId), eq(blocks.blockedId, uid))
+                )
+              )
+          ),
+          // not already matched (matches store the pair in canonical order)
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(matches)
+              .where(
+                or(
+                  and(eq(matches.user1Id, uid), eq(matches.user2Id, passes.passedId)),
+                  and(eq(matches.user1Id, passes.passedId), eq(matches.user2Id, uid))
+                )
+              )
+          )
+        )
+      )
+      .orderBy(desc(passes.createdAt))
+      .limit(PASSED_PROFILES_LIMIT);
+
+    if (rows.length === 0) return [];
+
+    const allPhotos = await db
+      .select()
+      .from(profilePhotos)
+      .where(inArray(profilePhotos.userId, rows.map((r) => r.profile.id)))
+      .orderBy(asc(profilePhotos.displayOrder));
+
+    const photosByUser = new Map<string, (typeof profilePhotos.$inferSelect)[]>();
+    for (const photo of allPhotos) {
+      const list = photosByUser.get(photo.userId) || [];
+      list.push(photo);
+      photosByUser.set(photo.userId, list);
+    }
+
+    return rows
+      .filter(({ profile }) => {
+        const age = profile.dateOfBirth ? calculateAgeFromDob(profile.dateOfBirth) : null;
+        return age !== null && age >= 18;
+      })
+      .map(({ profile, passedAt }) => ({
+        ...toPublicProfile(profile, photosByUser.get(profile.id) || [], myInterests),
+        passedAt: passedAt.toISOString(),
+      }));
+  } catch (error) {
+    console.error('Database query failed (getPassedProfiles):', error);
+    throw new AppQueryError(
+      'Unable to load your passed profiles right now. Please try again.',
+      500
+    );
+  }
+}
+
+/**
+ * Undo Pass: remove the caller's own pass record. Because getDiscoverQueue only hides a
+ * profile via the passes table (plus likes / matches / blocks), the profile becomes eligible
+ * for discovery again immediately. Idempotent: removing a pass that is already gone succeeds.
+ */
+export async function undoPass(
+  passerId: string,
+  passedId: string
+): Promise<{ removed: boolean }> {
+  if (passerId === passedId) {
+    throw new AppQueryError('You cannot undo a pass on your own profile.', 400);
+  }
+
+  try {
+    const deleted = await db
+      .delete(passes)
+      .where(and(eq(passes.passerId, passerId), eq(passes.passedId, passedId)))
+      .returning({ id: passes.id });
+    return { removed: deleted.length > 0 };
+  } catch (error) {
+    console.error('Database query failed (undoPass):', error);
+    throw new AppQueryError('Could not undo pass. Please try again.', 500);
   }
 }
 
