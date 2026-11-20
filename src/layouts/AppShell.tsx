@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, LogOut, MessageCircle, User } from 'lucide-react';
+import { Flame, Heart, LogOut, MessageCircle, User } from 'lucide-react';
 import { AppTab, MyProfile } from '../types/nearu';
 import { AvatarPhoto } from '../components/AvatarPhoto';
 
@@ -7,6 +7,7 @@ interface AppShellProps {
   activeTab: AppTab;
   onSelectTab: (tab: AppTab) => void;
   unreadTotal: number;
+  likesTotal: number;
   profile: MyProfile;
   onSignOut: () => void;
   hideMobileChrome?: boolean;
@@ -17,6 +18,7 @@ export function AppShell({
   activeTab,
   onSelectTab,
   unreadTotal,
+  likesTotal,
   profile,
   onSignOut,
   hideMobileChrome = false,
@@ -24,6 +26,7 @@ export function AppShell({
 }: AppShellProps) {
   const navItems: { id: AppTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'discover', label: 'Discover', icon: Flame },
+    { id: 'likes', label: 'Likes', icon: Heart },
     { id: 'matches', label: 'Matches', icon: MessageCircle },
     { id: 'profile', label: 'Profile', icon: User },
   ];
@@ -62,6 +65,9 @@ export function AppShell({
                     <span className="text-xs font-semibold text-[#F472B6] tabular-nums">
                       ({unreadTotal})
                     </span>
+                  )}
+                  {item.id === 'likes' && likesTotal > 0 && (
+                    <span className="text-xs font-semibold text-[#F472B6] tabular-nums">({likesTotal})</span>
                   )}
                   {isActive && (
                     <span className="absolute -bottom-[19px] inset-x-0 h-0.5 bg-[#E05A6D]" />
@@ -122,13 +128,13 @@ export function AppShell({
         {children}
       </main>
 
-      {/* Mobile Bottom Tab Bar (3 primary destinations: Discover, Matches, Profile) */}
+      {/* Mobile Bottom Tab Bar */}
       {!hideMobileChrome && (
         <nav
           aria-label="Mobile navigation"
           className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#121317]/95 backdrop-blur-md border-t border-[#2A2B32] pb-safe"
         >
-          <div className="grid grid-cols-3 h-16 items-center">
+          <div className="grid grid-cols-4 h-16 items-center">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -146,6 +152,11 @@ export function AppShell({
                     {item.id === 'matches' && unreadTotal > 0 && (
                       <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-[#E05A6D] text-white text-[10px] font-bold flex items-center justify-center tabular-nums">
                         {unreadTotal > 9 ? '9+' : unreadTotal}
+                      </span>
+                    )}
+                    {item.id === 'likes' && likesTotal > 0 && (
+                      <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-[#E05A6D] text-white text-[10px] font-bold flex items-center justify-center tabular-nums">
+                        {likesTotal > 9 ? '9+' : likesTotal}
                       </span>
                     )}
                   </div>

@@ -20,6 +20,7 @@ import {
   deleteUserAccount,
   getActiveMatches,
   getDiscoverQueue,
+  getReceivedLikes,
   getMatchMessages,
   getMyFullProfile,
   getPassedProfiles,
@@ -343,6 +344,8 @@ apiRouter.post(
           type: 'match:created',
           match: result.partnerMatchPayload,
         });
+      } else {
+        emitToUser(targetUserId.trim(), { type: 'likes:updated' });
       }
 
       res.json({
@@ -354,6 +357,16 @@ apiRouter.post(
     }
   }
 );
+
+// Received likes are resolved server-side so a user can only ever see their own list.
+apiRouter.get('/likes/received', requireAuth, requireCompleteProfile, async (req: AuthRequest, res: Response) => {
+  try {
+    const profiles = await getReceivedLikes(req.user!.uid);
+    res.json({ profiles, count: profiles.length });
+  } catch (error) {
+    sendError(res, error, 'Failed to load received likes.');
+  }
+});
 
 // Pass profile
 apiRouter.post(

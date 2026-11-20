@@ -17,6 +17,7 @@ interface ProfileCardViewProps {
   busy?: boolean;
   onPass?: () => void;
   onLike?: () => void;
+  likeLabel?: string;
   onBlock?: () => void;
 }
 
@@ -26,6 +27,7 @@ export function ProfileCardView({
   busy = false,
   onPass,
   onLike,
+  likeLabel = 'Like',
   onBlock,
 }: ProfileCardViewProps) {
   const [photoIdx, setPhotoIdx] = useState(0);
@@ -242,10 +244,10 @@ export function ProfileCardView({
         </div>
 
         {/* Ergonomic Pass & Like Action Bar */}
-        {!isPreview && onPass && onLike && (
+        {!isPreview && onLike && (
           <div className="pt-6 mt-6 border-t border-[#2A2B32]">
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <button
+            <div className={onPass ? 'grid grid-cols-2 gap-3 sm:gap-4' : ''}>
+              {onPass && <button
                 type="button"
                 onClick={onPass}
                 disabled={busy}
@@ -253,7 +255,7 @@ export function ProfileCardView({
               >
                 <X className="w-5 h-5 text-[#9CA3AF]" />
                 <span>Pass</span>
-              </button>
+              </button>}
 
               <button
                 type="button"
@@ -262,12 +264,12 @@ export function ProfileCardView({
                 className="min-h-[54px] px-5 py-3 rounded-2xl bg-[#E05A6D] hover:bg-[#d14c60] active:scale-[0.98] disabled:opacity-50 text-white font-semibold text-sm flex items-center justify-center gap-2.5 shadow-[0_8px_28px_rgba(224,90,109,0.28)] transition-all cursor-pointer whitespace-nowrap"
               >
                 <Heart className="w-5 h-5 fill-current" />
-                <span>Like</span>
+                <span>{likeLabel}</span>
               </button>
             </div>
-            <p className="hidden lg:block text-center text-xs text-[#9CA3AF] mt-3">
+            {onPass && <p className="hidden lg:block text-center text-xs text-[#9CA3AF] mt-3">
               Keyboard shortcuts: Left arrow to Pass · Right arrow to Like
-            </p>
+            </p>}
           </div>
         )}
       </div>

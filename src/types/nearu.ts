@@ -70,4 +70,4 @@ export interface MatchSummary {
   unreadCount: number;
 }
 
-export type AppTab = 'discover' | 'matches' | 'profile';
+export type AppTab = 'discover' | 'likes' | 'matches' | 'profile';

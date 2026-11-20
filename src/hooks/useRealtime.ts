@@ -7,6 +7,7 @@ export interface RealtimeHandlers {
   onMessagesRead?: (matchId: number, readerId: string, readAt: string) => void;
   onMatchCreated?: (match: MatchSummary) => void;
   onMatchRemoved?: (matchId: number) => void;
+  onLikesUpdated?: () => void;
   onReconnected?: () => void;
 }
 
@@ -79,6 +80,9 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers) {
               break;
             case 'match:removed':
               handlersRef.current.onMatchRemoved?.(data.matchId);
+              break;
+            case 'likes:updated':
+              handlersRef.current.onLikesUpdated?.();
               break;
             default:
               break;
