@@ -8,6 +8,7 @@ import { LandingPage } from './pages/LandingPage';
 import { CampusVerifyPage } from './pages/CampusVerifyPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { DiscoverPage } from './pages/DiscoverPage';
+import { LikesPage } from './pages/LikesPage';
 import { MatchesChatPage } from './pages/MatchesChatPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { MatchCelebrationModal } from './components/MatchCelebrationModal';
@@ -21,6 +22,17 @@ function AuthenticatedWorkspace() {
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
   const [messagesByMatch, setMessagesByMatch] = useState<Record<number, ChatMessage[]>>({});
   const [celebrationMatch, setCelebrationMatch] = useState<MatchSummary | null>(null);
+  const [likesTotal, setLikesTotal] = useState(0);
+  const [likesRefreshToken, setLikesRefreshToken] = useState(0);
+
+  const refreshLikes = useCallback(async () => {
+    try {
+      const { count } = await api.getReceivedLikes();
+      setLikesTotal(count);
+    } catch {
+      // The Likes page will show a retryable error if the user opens it.
+    }
+  }, []);
 
   const loadMatches = useCallback(async () => {
     setMatchesLoading(true);
@@ -38,6 +50,10 @@ function AuthenticatedWorkspace() {
   useEffect(() => {
     loadMatches();
   }, [loadMatches]);
+
+  useEffect(() => {
+    refreshLikes();
+  }, [refreshLikes]);
 
   const loadMessages = useCallback(async (matchId: number) => {
     const { messages } = await api.getMessages(matchId);
@@ -132,11 +148,16 @@ function AuthenticatedWorkspace() {
       });
       setCelebrationMatch((prev) => prev || match);
     },
+    onLikesUpdated: () => {
+      setLikesRefreshToken((value) => value + 1);
+      refreshLikes();
+    },
     onMatchRemoved: (matchId) => {
       handleMatchRemoved(matchId);
     },
     onReconnected: () => {
       loadMatches();
+      refreshLikes();
       if (selectedMatchId !== null) {
         loadMessages(selectedMatchId).catch(() => {});
       }
@@ -188,6 +209,7 @@ function AuthenticatedWorkspace() {
         }
       }}
       unreadTotal={unreadTotal}
+      likesTotal={likesTotal}
       profile={profile}
       onSignOut={signOut}
       hideMobileChrome={hideMobileChrome}
@@ -197,6 +219,15 @@ function AuthenticatedWorkspace() {
           onMutualMatch={(match) => setCelebrationMatch(match)}
           onMatchesChanged={loadMatches}
           excludedProfileIds={matches.map((m) => m.partner.id)}
+        />
+      )}
+
+      {activeTab === 'likes' && (
+        <LikesPage
+          refreshToken={likesRefreshToken}
+          onLikeCountChanged={setLikesTotal}
+          onMutualMatch={(match) => setCelebrationMatch(match)}
+          onMatchesChanged={loadMatches}
         />
       )}
 

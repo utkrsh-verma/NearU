@@ -118,6 +118,8 @@ export const api = {
   getDiscoverQueue: (gender: 'all' | 'man' | 'woman' = 'all') =>
     request<{ profiles: PublicProfile[] }>(`/api/discover?gender=${gender}`),
 
+  getReceivedLikes: () => request<{ profiles: PublicProfile[]; count: number }>('/api/likes/received'),
+
   likeProfile: (targetUserId: string) =>
     request<{ matched: boolean; match: MatchSummary | null }>('/api/discover/like', {
       method: 'POST',

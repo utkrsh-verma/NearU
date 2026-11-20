@@ -666,6 +666,65 @@ export async function getDiscoverQueue(
   }
 }
 
+/** Profiles that liked the current user and have not been reciprocated or matched. */
+export async function getReceivedLikes(uid: string): Promise<PublicProfileDTO[]> {
+  try {
+    const [meRows, incomingRows, outgoingRows, blockRows, matchRows] = await Promise.all([
+      db.select().from(profiles).where(eq(profiles.id, uid)).limit(1),
+      db.select({ likerId: likes.likerId, createdAt: likes.createdAt })
+        .from(likes).where(eq(likes.likedId, uid)).orderBy(desc(likes.createdAt)),
+      db.select({ likedId: likes.likedId }).from(likes).where(eq(likes.likerId, uid)),
+      db.select({ blocker: blocks.blockerId, blocked: blocks.blockedId })
+        .from(blocks).where(or(eq(blocks.blockerId, uid), eq(blocks.blockedId, uid))),
+      db.select({ user1: matches.user1Id, user2: matches.user2Id })
+        .from(matches).where(or(eq(matches.user1Id, uid), eq(matches.user2Id, uid))),
+    ]);
+
+    const excluded = new Set<string>(outgoingRows.map((row) => row.likedId));
+    for (const row of blockRows) {
+      excluded.add(row.blocker);
+      excluded.add(row.blocked);
+    }
+    for (const row of matchRows) {
+      excluded.add(row.user1);
+      excluded.add(row.user2);
+    }
+    excluded.add(uid);
+
+    const likerIds = incomingRows.map((row) => row.likerId).filter((id) => !excluded.has(id));
+    if (likerIds.length === 0) return [];
+
+    const [likerProfiles, photos] = await Promise.all([
+      db.select().from(profiles).where(and(
+        inArray(profiles.id, likerIds),
+        eq(profiles.isVerified, true),
+        eq(profiles.isProfileComplete, true),
+        eq(profiles.isActive, true)
+      )),
+      db.select().from(profilePhotos).where(inArray(profilePhotos.userId, likerIds))
+        .orderBy(asc(profilePhotos.displayOrder)),
+    ]);
+    const photosByUser = new Map<string, (typeof profilePhotos.$inferSelect)[]>();
+    for (const photo of photos) {
+      const list = photosByUser.get(photo.userId) || [];
+      list.push(photo);
+      photosByUser.set(photo.userId, list);
+    }
+    const myInterests = Array.isArray(meRows[0]?.interests) ? meRows[0].interests : [];
+    const position = new Map(incomingRows.map((row, index) => [row.likerId, index]));
+    return likerProfiles
+      .filter((profile) => {
+        const age = profile.dateOfBirth ? calculateAgeFromDob(profile.dateOfBirth) : null;
+        return age !== null && age >= 18;
+      })
+      .map((profile) => toPublicProfile(profile, photosByUser.get(profile.id) || [], myInterests))
+      .sort((a, b) => (position.get(a.id) || 0) - (position.get(b.id) || 0));
+  } catch (error) {
+    console.error('Database query failed (getReceivedLikes):', error);
+    throw new AppQueryError('Unable to load likes right now. Please try again.', 500);
+  }
+}
+
 export async function recordLikeAndCheckMatch(
   likerId: string,
   likedId: string
