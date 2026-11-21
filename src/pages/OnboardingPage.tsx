@@ -270,9 +270,6 @@ export function OnboardingPage() {
               <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#F3F4F6]">
                 Let&apos;s set up your campus profile
               </h1>
-              <p className="text-sm text-[#9CA3AF] mt-1.5">
-                Your age is verified server-side from your date of birth (18+ required).
-              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
