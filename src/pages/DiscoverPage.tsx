@@ -12,13 +12,13 @@ interface DiscoverPageProps {
   excludedProfileIds?: string[];
 }
 
-type GenderFilter = 'all' | 'man' | 'woman';
+type GenderFilter = 'all' | 'male' | 'female' | 'man' | 'woman';
 type DiscoverView = 'discover' | 'passed';
 
 const genderFilters: Array<{ value: GenderFilter; label: string; symbol: string }> = [
   { value: 'all', label: 'All', symbol: '◎' },
-  { value: 'man', label: 'Male', symbol: '♂' },
-  { value: 'woman', label: 'Female', symbol: '♀' },
+  { value: 'male', label: 'Male', symbol: '♂' },
+  { value: 'female', label: 'Female', symbol: '♀' },
 ];
 
 export function DiscoverPage({
@@ -433,7 +433,7 @@ export function DiscoverPage({
             No profiles found
           </h2>
           <p className="text-sm sm:text-base text-[#9CA3AF] mt-2.5 leading-relaxed max-w-md mx-auto">
-            No verified {genderFilter === 'all' ? '' : genderFilter === 'man' ? 'male ' : 'female '}
+            No verified {genderFilter === 'all' ? '' : (genderFilter === 'man' || genderFilter === 'male') ? 'male ' : 'female '}
             profiles are available right now. Try another filter or check back soon.
           </p>
           <button
@@ -500,7 +500,7 @@ export function DiscoverPage({
           <p className="text-sm sm:text-base text-[#9CA3AF] mt-2.5 leading-relaxed max-w-md mx-auto">
             {genderFilter === 'all'
               ? 'Profiles you pass on will show up here, so you can change your mind later.'
-              : `You haven't passed on any ${genderFilter === 'man' ? 'male' : 'female'} profiles. Try another filter.`}
+              : `You haven't passed on any ${(genderFilter === 'man' || genderFilter === 'male') ? 'male' : 'female'} profiles. Try another filter.`}
           </p>
           <button
             type="button"

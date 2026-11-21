@@ -55,6 +55,13 @@ export function ProfileCardView({
     (profile.sharedInterests || []).map((item) => item.toLowerCase())
   );
 
+  const formatGender = (g: string | null) => {
+    if (!g) return null;
+    if (g === 'Male' || g === 'Man') return 'Male ♂';
+    if (g === 'Female' || g === 'Woman') return 'Female ♀';
+    return g;
+  };
+
   const metaParts = [
     profile.branch,
     profile.batchYear
@@ -62,7 +69,7 @@ export function ProfileCardView({
         ? `Batch of ${profile.batchYear}`
         : profile.batchYear
       : null,
-    profile.gender,
+    formatGender(profile.gender),
   ].filter(Boolean);
 
   return (

@@ -116,7 +116,7 @@ export const api = {
       method: 'POST',
     }),
 
-  getDiscoverQueue: (gender: 'all' | 'man' | 'woman' = 'all') =>
+  getDiscoverQueue: (gender: 'all' | 'male' | 'female' | 'man' | 'woman' = 'all') =>
     request<{ profiles: PublicProfile[] }>(`/api/discover?gender=${gender}`),
 
   getReceivedLikes: () => request<{ profiles: PublicProfile[]; count: number }>('/api/likes/received'),
@@ -133,7 +133,7 @@ export const api = {
       body: JSON.stringify({ targetUserId }),
     }),
 
-  getPassedProfiles: (gender: 'all' | 'man' | 'woman' = 'all') =>
+  getPassedProfiles: (gender: 'all' | 'male' | 'female' | 'man' | 'woman' = 'all') =>
     request<{ profiles: PassedProfile[] }>(`/api/discover/passed?gender=${gender}`),
 
   undoPass: (targetUserId: string) =>

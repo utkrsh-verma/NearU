@@ -313,7 +313,7 @@ apiRouter.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const gender = typeof req.query.gender === 'string' ? req.query.gender : 'all';
-      if (gender !== 'all' && gender !== 'man' && gender !== 'woman') {
+      if (gender !== 'all' && gender !== 'man' && gender !== 'woman' && gender !== 'male' && gender !== 'female') {
         return res.status(400).json({ error: 'Invalid gender filter.' });
       }
       const profiles = await getDiscoverQueue(req.user!.uid, gender);
@@ -398,7 +398,7 @@ apiRouter.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const gender = typeof req.query.gender === 'string' ? req.query.gender : 'all';
-      if (gender !== 'all' && gender !== 'man' && gender !== 'woman') {
+      if (gender !== 'all' && gender !== 'man' && gender !== 'woman' && gender !== 'male' && gender !== 'female') {
         return res.status(400).json({ error: 'Invalid gender filter.' });
       }
       const profiles = await getPassedProfiles(req.user!.uid, gender);

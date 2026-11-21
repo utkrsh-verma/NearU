@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
 import {
   BRANCH_OPTIONS,
+  GENDER_CONFIG,
   GENDER_OPTIONS,
   INTEREST_OPTIONS,
   LOOKING_FOR_OPTIONS,
@@ -45,7 +46,9 @@ export function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [fullName, setFullName] = useState(profile?.fullName || '');
   const [dateOfBirth, setDateOfBirth] = useState(profile?.dateOfBirth || '');
-  const [gender, setGender] = useState(profile?.gender || '');
+  const initialGender =
+    profile?.gender === 'Man' ? 'Male' : profile?.gender === 'Woman' ? 'Female' : profile?.gender || '';
+  const [gender, setGender] = useState(initialGender);
   const [branch, setBranch] = useState(profile?.branch || '');
   const [batchYear, setBatchYear] = useState(profile?.batchYear || '');
   const [bio, setBio] = useState(profile?.bio || '');
@@ -308,19 +311,22 @@ export function OnboardingPage() {
                 <label className="block text-xs font-medium text-[#9CA3AF] mb-1.5">
                   Gender
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {GENDER_OPTIONS.map((opt) => (
+                <div className="grid grid-cols-2 gap-3">
+                  {GENDER_CONFIG.map(({ value, label, symbol }) => (
                     <button
-                      key={opt}
+                      key={value}
                       type="button"
-                      onClick={() => setGender(opt)}
-                      className={`min-h-[48px] px-2 py-2.5 rounded-xl text-xs sm:text-sm font-medium border transition-colors cursor-pointer ${
-                        gender === opt
+                      onClick={() => setGender(value)}
+                      className={`min-h-[48px] px-3 py-2.5 rounded-xl text-sm font-medium border transition-colors cursor-pointer flex items-center justify-center gap-2 ${
+                        gender === value ||
+                        (gender === 'Man' && value === 'Male') ||
+                        (gender === 'Woman' && value === 'Female')
                           ? 'bg-[#E05A6D]/15 border-[#E05A6D] text-[#F3F4F6]'
                           : 'bg-[#1A1B20] border-[#2A2B32] text-[#9CA3AF] hover:text-[#F3F4F6]'
                       }`}
                     >
-                      {opt}
+                      <span className="text-base text-[#E05A6D] font-bold">{symbol}</span>
+                      <span>{label}</span>
                     </button>
                   ))}
                 </div>

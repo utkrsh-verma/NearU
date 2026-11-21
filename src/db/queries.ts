@@ -578,7 +578,7 @@ export async function hasBlockBetween(userA: string, userB: string): Promise<boo
   }
 }
 
-export type DiscoverGenderFilter = 'all' | 'man' | 'woman';
+export type DiscoverGenderFilter = 'all' | 'man' | 'woman' | 'male' | 'female';
 
 export async function getDiscoverQueue(
   uid: string,
@@ -617,12 +617,13 @@ export async function getDiscoverQueue(
     const excludedList = Array.from(excluded);
 
     // Filter excluded IDs inside PostgreSQL BEFORE applying LIMIT so large campuses never starve
-    const genderCondition =
-      genderFilter === 'man'
-        ? eq(profiles.gender, 'Man')
-        : genderFilter === 'woman'
-          ? eq(profiles.gender, 'Woman')
-          : undefined;
+    const isMale = genderFilter === 'man' || genderFilter === 'male';
+    const isFemale = genderFilter === 'woman' || genderFilter === 'female';
+    const genderCondition = isMale
+      ? or(eq(profiles.gender, 'Male'), eq(profiles.gender, 'Man'))
+      : isFemale
+        ? or(eq(profiles.gender, 'Female'), eq(profiles.gender, 'Woman'))
+        : undefined;
 
     const candidates = await db
       .select()
@@ -918,12 +919,13 @@ export async function getPassedProfiles(
   genderFilter: DiscoverGenderFilter = 'all'
 ): Promise<PassedProfileDTO[]> {
   try {
-    const genderCondition =
-      genderFilter === 'man'
-        ? eq(profiles.gender, 'Man')
-        : genderFilter === 'woman'
-          ? eq(profiles.gender, 'Woman')
-          : undefined;
+    const isMale = genderFilter === 'man' || genderFilter === 'male';
+    const isFemale = genderFilter === 'woman' || genderFilter === 'female';
+    const genderCondition = isMale
+      ? or(eq(profiles.gender, 'Male'), eq(profiles.gender, 'Man'))
+      : isFemale
+        ? or(eq(profiles.gender, 'Female'), eq(profiles.gender, 'Woman'))
+        : undefined;
 
     const meRows = await db
       .select({ interests: profiles.interests })

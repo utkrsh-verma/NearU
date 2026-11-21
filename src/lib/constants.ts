@@ -1,4 +1,9 @@
-export const GENDER_OPTIONS = ['Woman', 'Man', 'Non-binary'] as const;
+export const GENDER_OPTIONS = ['Male', 'Female'] as const;
+
+export const GENDER_CONFIG = [
+  { value: 'Male', label: 'Male', symbol: '♂' },
+  { value: 'Female', label: 'Female', symbol: '♀' },
+] as const;
 
 export const COLLEGE_OPTIONS = [
   'GL Bajaj Institute of Technology & Management',
