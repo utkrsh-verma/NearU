@@ -412,6 +412,7 @@ export function ProfilePage() {
                 maxLength={180}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
+                placeholder="Looking for someone who won't ghost me like my API requests."
                 className="w-full px-4 py-3 rounded-xl bg-[#1A1B20] border border-[#2A2B32] focus:border-[#E05A6D] focus:outline-none text-sm text-[#F3F4F6] resize-none leading-relaxed"
               />
             </div>
