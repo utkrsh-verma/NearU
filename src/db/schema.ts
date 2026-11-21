@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   date,
   index,
@@ -87,6 +88,8 @@ export const likes = pgTable(
   (table) => [
     uniqueIndex('uq_likes_pair').on(table.likerId, table.likedId),
     index('idx_likes_liked_id').on(table.likedId),
+    // received likes, newest first
+    index('idx_likes_liked_created').on(table.likedId, table.createdAt.desc()),
   ]
 );
 
@@ -115,7 +118,11 @@ export const passes = pgTable(
 export const matches = pgTable(
   'matches',
   {
-    id: serial('id').primaryKey(),
+    // The SQL migration creates this as `bigint`. node-postgres returns bigint as a STRING and
+    // Drizzle's `serial` does not convert it, so ids came back as "2" while messages.match_id
+    // came back as 2: every id lookup / comparison (last message, unread count, live events,
+    // message delete) silently failed. `bigint({ mode: 'number' })` always yields a JS number.
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
     user1Id: uuid('user1_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
@@ -137,8 +144,8 @@ export const matches = pgTable(
 export const messages = pgTable(
   'messages',
   {
-    id: serial('id').primaryKey(),
-    matchId: integer('match_id')
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    matchId: bigint('match_id', { mode: 'number' })
       .notNull()
       .references(() => matches.id, { onDelete: 'cascade' }),
     senderId: uuid('sender_id')
