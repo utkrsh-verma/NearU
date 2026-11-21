@@ -520,16 +520,20 @@ export async function swapProfilePhotos(uid: string): Promise<PublicPhotoDTO[]> 
     await db.transaction(async (tx) => {
       await tx
         .update(profilePhotos)
-        .set({ displayOrder: 99 })
+        .set({
+          storagePath: second.storagePath,
+          legacyDataUrl: second.legacyDataUrl,
+          mimeType: second.mimeType,
+        })
         .where(eq(profilePhotos.id, first.id));
       await tx
         .update(profilePhotos)
-        .set({ displayOrder: 1 })
+        .set({
+          storagePath: first.storagePath,
+          legacyDataUrl: first.legacyDataUrl,
+          mimeType: first.mimeType,
+        })
         .where(eq(profilePhotos.id, second.id));
-      await tx
-        .update(profilePhotos)
-        .set({ displayOrder: 2 })
-        .where(eq(profilePhotos.id, first.id));
     });
 
     const refreshed = await db
