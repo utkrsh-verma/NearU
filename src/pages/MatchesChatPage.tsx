@@ -11,7 +11,6 @@ import {
   MoreVertical,
   Send,
   ShieldAlert,
-  ShieldCheck,
   UserX,
   Trash2,
 } from 'lucide-react';
@@ -504,15 +503,6 @@ export function MatchesChatPage({
                     </>
                   )}
                 </div>
-              </div>
-
-              {/* Campus Safety Advisory Bar */}
-              <div className="px-4 sm:px-5 py-2.5 bg-[#1A1B20]/70 border-b border-[#2A2B32]/80 flex items-center gap-2 text-xs text-[#9CA3AF] shrink-0">
-                <ShieldCheck className="w-4 h-4 text-[#8B5CF6] shrink-0" />
-                <span>
-                  You are both verified students of GL Bajaj. Never share UPI pins, OTPs,
-                  or passwords.
-                </span>
               </div>
 
               {/* Messages Stream */}
