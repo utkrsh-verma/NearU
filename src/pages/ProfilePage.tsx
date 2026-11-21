@@ -446,7 +446,7 @@ export function ProfilePage() {
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {INTEREST_OPTIONS.map((item) => {
+                {Array.from(new Set([...interests, ...INTEREST_OPTIONS])).map((item) => {
                   const selected = interests.includes(item);
                   const disabled = !selected && interests.length >= 5;
                   return (
