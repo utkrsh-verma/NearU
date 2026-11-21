@@ -415,10 +415,6 @@ export function MatchesChatPage({
               <h2 className="font-display text-xl font-semibold text-[#F3F4F6]">
                 Select a conversation
               </h2>
-              <p className="text-sm text-[#9CA3AF] mt-1.5 max-w-sm">
-                Private 1-on-1 text chat is exclusively available between mutually
-                matched GL Bajaj students.
-              </p>
             </div>
           ) : (
             <>
