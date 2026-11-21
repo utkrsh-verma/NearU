@@ -64,21 +64,11 @@ export const INTEREST_OPTIONS = [
 ] as const;
 
 export const CAMPUS_ICEBREAKERS = [
-  'Chai at Nescafe canteen between lectures?',
-  'Surviving the lab submissions this week?',
-  'What is your go-to spot on campus when skipping a lecture?',
+  'Do you believe in instant connections..?',
+  "What's your current favourite song..?",
+  "What's your biggest green flag..?",
 ] as const;
 
-export function buildIcebreakers(sharedInterests: string[]): string[] {
-  const custom: string[] = [];
-  if (sharedInterests.length > 0) {
-    custom.push(
-      `Saw we're both into ${sharedInterests[0]} — what's been your highlight lately?`
-    );
-  }
-  for (const fallback of CAMPUS_ICEBREAKERS) {
-    if (custom.length >= 3) break;
-    custom.push(fallback);
-  }
-  return custom;
+export function buildIcebreakers(_sharedInterests?: string[]): string[] {
+  return [...CAMPUS_ICEBREAKERS];
 }
