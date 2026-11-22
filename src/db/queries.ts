@@ -52,7 +52,6 @@ export interface PublicProfileDTO {
   lookingFor: string | null;
   interests: string[];
   isVerified: boolean;
-  lastSeenAt: string | null;
   photos: PublicPhotoDTO[];
   sharedInterests?: string[];
 }
@@ -119,10 +118,7 @@ function formatPhoto(row: typeof profilePhotos.$inferSelect): PublicPhotoDTO {
 function toPublicProfile(
   row: typeof profiles.$inferSelect,
   photoRows: (typeof profilePhotos.$inferSelect)[],
-  viewerInterests: string[] = [],
-  // Last-seen is only shared with people you are matched with (and with yourself); it is
-  // never sent for Discover / Passed / Likes candidates.
-  options: { includeLastSeen?: boolean } = {}
+  viewerInterests: string[] = []
 ): PublicProfileDTO {
   const sortedPhotos = [...photoRows]
     .sort((a, b) => a.displayOrder - b.displayOrder)
@@ -144,7 +140,6 @@ function toPublicProfile(
     lookingFor: row.lookingFor,
     interests: userInterests,
     isVerified: row.isVerified,
-    lastSeenAt: options.includeLastSeen && row.lastSeenAt ? row.lastSeenAt.toISOString() : null,
     photos: sortedPhotos,
     sharedInterests: shared,
   };
@@ -196,9 +191,6 @@ export async function syncUserProfile(
                 verificationMethod: 'domain_email',
               }
             : {}),
-          // Serverless hosts (Vercel) have no WebSocket close event, so last-seen would never
-          // advance there. This row is already written on every authenticated request.
-          lastSeenAt: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(profiles.id, uid))
@@ -303,7 +295,7 @@ export async function getMyFullProfile(uid: string): Promise<MyProfileDTO | null
 
     if (profileRows.length === 0) return null;
     const row = profileRows[0];
-    const pub = toPublicProfile(row, photoRows, [], { includeLastSeen: true });
+    const pub = toPublicProfile(row, photoRows);
 
     return {
       ...pub,
@@ -1164,8 +1156,7 @@ export async function getActiveMatches(
       const partner = toPublicProfile(
         partnerRow,
         photosMap.get(partnerId) || [],
-        myInterests,
-        { includeLastSeen: true }
+        myInterests
       );
       const last = lastMessageByMatch.get(m.id);
 
@@ -1382,14 +1373,6 @@ export async function deleteMatchMessage(messageId: number, uid: string): Promis
 export async function markMessageDelivered(messageId: number): Promise<void> {
   await db.update(messages).set({ deliveredAt: new Date() })
     .where(and(eq(messages.id, messageId), isNull(messages.deliveredAt), isNull(messages.deletedAt)));
-}
-
-export async function updateLastSeen(uid: string): Promise<void> {
-  try {
-    await db.update(profiles).set({ lastSeenAt: new Date() }).where(eq(profiles.id, uid));
-  } catch (error) {
-    console.warn('Could not update last seen:', error);
-  }
 }
 
 export async function canWatchPresence(uid: string, partnerId: string): Promise<boolean> {

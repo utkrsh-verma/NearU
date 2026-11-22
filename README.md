@@ -45,7 +45,7 @@ supabase/migrations/003_passed_profiles.sql
 It reuses the existing `passes` table, adds an index, and replaces the broad passes policy with
 explicit own-rows-only SELECT / INSERT / DELETE policies (no UPDATE).
 
-The chat enhancements (delivered/read ticks, message delete, last seen) need these columns:
+The chat enhancements (delivered/read ticks, message delete, online status) need these columns:
 ```
 supabase/migrations/003_chat_receipts_presence.sql
 ```

@@ -14,8 +14,6 @@ import { MatchesChatPage } from './pages/MatchesChatPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { MatchCelebrationModal } from './components/MatchCelebrationModal';
 
-const RECENTLY_ACTIVE_MS = 60_000;
-
 function AuthenticatedWorkspace() {
   const { profile, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<AppTab>('discover');
@@ -319,17 +317,8 @@ function AuthenticatedWorkspace() {
     [appendMessageIdempotent, handleOpenMatchChat]
   );
 
-  // Online = live WebSocket presence, OR the partner made a request within the last minute
-  // (their last_seen_at advances on every request, so this also works without WebSockets).
-  const watchedPartnerLastSeen = watchedUserId
-    ? matches.find((m) => m.partner.id === watchedUserId)?.partner.lastSeenAt
-    : null;
-  const partnerIsOnline = Boolean(
-    watchedUserId &&
-      (onlineUsers[watchedUserId] ||
-        (watchedPartnerLastSeen &&
-          Date.now() - new Date(watchedPartnerLastSeen).getTime() < RECENTLY_ACTIVE_MS))
-  );
+  // "Online" comes from live WebSocket presence only
+  const partnerIsOnline = Boolean(watchedUserId && onlineUsers[watchedUserId]);
 
   const unreadTotal = useMemo(
     () => matches.reduce((sum, m) => sum + (m.unreadCount || 0), 0),

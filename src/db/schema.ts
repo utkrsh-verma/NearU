@@ -37,7 +37,6 @@ export const profiles = pgTable(
     interests: jsonb('interests').$type<string[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   },
   (table) => [
     index('idx_profiles_eligible').on(
