@@ -52,7 +52,6 @@ export interface PublicProfileDTO {
   lookingFor: string | null;
   interests: string[];
   isVerified: boolean;
-  lastSeenAt: string | null;
   photos: PublicPhotoDTO[];
   sharedInterests?: string[];
 }
@@ -141,7 +140,6 @@ function toPublicProfile(
     lookingFor: row.lookingFor,
     interests: userInterests,
     isVerified: row.isVerified,
-    lastSeenAt: row.lastSeenAt ? row.lastSeenAt.toISOString() : null,
     photos: sortedPhotos,
     sharedInterests: shared,
   };
@@ -748,6 +746,8 @@ export async function recordLikeAndCheckMatch(
   matched: boolean;
   match?: MatchDTO;
   partnerMatchPayload?: MatchDTO;
+  /** false when this like already existed (duplicate request); callers use it to avoid re-notifying */
+  likeCreated: boolean;
 }> {
   if (likerId === likedId) {
     throw new AppQueryError('You cannot like your own profile.', 400);
@@ -783,7 +783,18 @@ export async function recordLikeAndCheckMatch(
       );
     }
 
+    let likeCreated = false;
+
     const matchRecord = await db.transaction(async (tx) => {
+      // Serialise concurrent likes for this pair. Without it, when two people like each other
+      // at the same instant, each transaction can miss the other's not-yet-committed like and
+      // NO match is created (23 of 30 simultaneous pairs lost their match in testing).
+      // The lock is released automatically at commit.
+      const [lockA, lockB] = canonicalPair(likerId, likedId);
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${lockA + ':' + lockB}, 0))`
+      );
+
       // Liking from the Passed list consumes the pass in the same transaction, so the
       // profile leaves the Passed list atomically with the like (and rolls back together).
       if (options.fromPassed) {
@@ -800,10 +811,12 @@ export async function recordLikeAndCheckMatch(
         }
       }
 
-      await tx
+      const insertedLike = await tx
         .insert(likes)
         .values({ likerId, likedId })
-        .onConflictDoNothing({ target: [likes.likerId, likes.likedId] });
+        .onConflictDoNothing({ target: [likes.likerId, likes.likedId] })
+        .returning({ id: likes.id });
+      likeCreated = insertedLike.length > 0;
 
       const reciprocal = await tx
         .select()
@@ -848,7 +861,7 @@ export async function recordLikeAndCheckMatch(
     });
 
     if (!matchRecord || matchRecord.status !== 'active') {
-      return { matched: false };
+      return { matched: false, likeCreated };
     }
 
     const [likerMatch, partnerMatch] = await Promise.all([
@@ -860,6 +873,7 @@ export async function recordLikeAndCheckMatch(
       matched: true,
       match: likerMatch || undefined,
       partnerMatchPayload: partnerMatch || undefined,
+      likeCreated,
     };
   } catch (error: any) {
     if (error instanceof AppQueryError) throw error;
@@ -1222,12 +1236,15 @@ export async function getMatchMessages(
       isNull(messages.deliveredAt),
       isNull(messages.deletedAt)
     ));
-    const rows = await db
+    // Newest 200 (previously the OLDEST 200, so after 200 messages new ones never appeared on
+    // reload), without soft-deleted rows (previously they came back as empty bubbles).
+    const newestFirst = await db
       .select()
       .from(messages)
-      .where(eq(messages.matchId, matchId))
-      .orderBy(asc(messages.createdAt))
+      .where(and(eq(messages.matchId, matchId), isNull(messages.deletedAt)))
+      .orderBy(desc(messages.createdAt), desc(messages.id))
       .limit(200);
+    const rows = newestFirst.reverse();
 
     return rows.map((r) => ({
       id: r.id,
@@ -1338,7 +1355,10 @@ export async function deleteMatchMessage(messageId: number, uid: string): Promis
     const message = rows[0];
     if (!message || message.senderId !== uid || message.deletedAt) throw new AppQueryError('Message is unavailable.', 404);
     const { partnerId } = await assertActiveMatchParticipant(message.matchId, uid);
-    const updated = await db.update(messages).set({ deletedAt: new Date(), content: '' })
+    // The original text is erased, but the column cannot be empty: migration 001 has
+    // CHECK (char_length(trim(content)) >= 1), so `content: ''` made EVERY delete fail with a
+    // constraint violation (HTTP 500). Deleted rows are never returned to clients.
+    const updated = await db.update(messages).set({ deletedAt: new Date(), content: '[deleted]' })
       .where(and(eq(messages.id, messageId), eq(messages.senderId, uid), isNull(messages.deletedAt)))
       .returning({ id: messages.id });
     if (!updated.length) throw new AppQueryError('Message is unavailable.', 404);
@@ -1353,14 +1373,6 @@ export async function deleteMatchMessage(messageId: number, uid: string): Promis
 export async function markMessageDelivered(messageId: number): Promise<void> {
   await db.update(messages).set({ deliveredAt: new Date() })
     .where(and(eq(messages.id, messageId), isNull(messages.deliveredAt), isNull(messages.deletedAt)));
-}
-
-export async function updateLastSeen(uid: string): Promise<void> {
-  try {
-    await db.update(profiles).set({ lastSeenAt: new Date() }).where(eq(profiles.id, uid));
-  } catch (error) {
-    console.warn('Could not update last seen:', error);
-  }
 }
 
 export async function canWatchPresence(uid: string, partnerId: string): Promise<boolean> {

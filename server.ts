@@ -5,7 +5,7 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { app, registerSocket, unregisterSocket, userSockets } from './src/app.ts';
 import { supabaseAdmin } from './src/lib/supabase-admin.ts';
-import { canWatchPresence, getProfileRow, updateLastSeen } from './src/db/queries.ts';
+import { canWatchPresence, getProfileRow } from './src/db/queries.ts';
 
 const PORT = Number(process.env.PORT) || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -82,7 +82,6 @@ async function startServer() {
       if (authenticatedUid) {
         unregisterSocket(authenticatedUid, ws);
         if (!userSockets.has(authenticatedUid)) {
-          updateLastSeen(authenticatedUid);
           notifyPresence(authenticatedUid, false);
         }
       }

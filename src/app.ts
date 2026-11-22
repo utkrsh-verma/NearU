@@ -346,7 +346,8 @@ apiRouter.post(
           type: 'match:created',
           match: result.partnerMatchPayload,
         });
-      } else {
+      } else if (result.likeCreated) {
+        // Only a brand-new like changes the target's received-likes list (not a duplicate)
         emitToUser(targetUserId.trim(), { type: 'likes:updated' });
       }
 
@@ -450,6 +451,8 @@ apiRouter.post(
           type: 'match:created',
           match: result.partnerMatchPayload,
         });
+      } else if (result.likeCreated) {
+        emitToUser(targetUserId, { type: 'likes:updated' });
       }
 
       res.json({

@@ -26,7 +26,6 @@ export interface PublicProfile {
   lookingFor: string | null;
   interests: string[];
   isVerified: boolean;
-  lastSeenAt: string | null;
   photos: ProfilePhoto[];
   sharedInterests?: string[];
 }

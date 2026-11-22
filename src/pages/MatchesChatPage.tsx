@@ -19,7 +19,6 @@ import { api } from '../services/api';
 import { buildIcebreakers } from '../lib/constants';
 import { AvatarPhoto } from '../components/AvatarPhoto';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { formatLastSeen } from '../lib/presenceStatus';
 
 interface MatchesChatPageProps {
   me: MyProfile;
@@ -447,9 +446,16 @@ export function MatchesChatPage({
                       )}
                     </div>
                     <p className="text-xs text-[#9CA3AF] truncate">
-                      <span className={onlinePartner ? 'text-[#4ADE80]' : undefined}>
-                        {onlinePartner ? '● Online' : formatLastSeen(activeMatch.partner.lastSeenAt)}
-                      </span>
+                      {onlinePartner ? (
+                        <span className="text-[#4ADE80]">● Online</span>
+                      ) : (
+                        [
+                          activeMatch.partner.branch,
+                          activeMatch.partner.batchYear ? `Batch ${activeMatch.partner.batchYear}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
+                      )}
                     </p>
                   </div>
                 </div>

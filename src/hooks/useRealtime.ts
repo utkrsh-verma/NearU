@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { ChatMessage, MatchSummary } from '../types/nearu';
 
@@ -14,12 +14,42 @@ export interface RealtimeHandlers {
   onReconnected?: () => void;
 }
 
-export function useRealtime(enabled: boolean, handlers: RealtimeHandlers, watchedUserId?: string) {
+// If the very first connection fails this many times in a row, the host has no WebSocket
+// endpoint (e.g. serverless on Vercel). Stop retrying; callers fall back to polling.
+const MAX_INITIAL_CONNECT_FAILURES = 4;
+
+/**
+ * Returns whether the live WebSocket is currently connected and authenticated.
+ * The socket is created once per signed-in session. Changing `watchedUserId` (opening another
+ * chat) only re-sends the presence subscription; it no longer tears the socket down, which
+ * previously forced a reconnect + re-auth on every chat switch and made the server think the
+ * user had gone offline.
+ */
+export function useRealtime(
+  enabled: boolean,
+  handlers: RealtimeHandlers,
+  watchedUserId?: string
+): boolean {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const authedRef = useRef(false);
+  const watchedRef = useRef(watchedUserId);
+  watchedRef.current = watchedUserId;
+
+  const sendWatch = () => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN && authedRef.current && watchedRef.current) {
+      ws.send(JSON.stringify({ type: 'watch:partner', partnerId: watchedRef.current }));
+    }
+  };
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setConnected(false);
+      return;
+    }
 
     let active = true;
     let ws: WebSocket | null = null;
@@ -45,6 +75,8 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers, watche
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = `${protocol}//${window.location.host}/ws`;
       ws = new WebSocket(url);
+      wsRef.current = ws;
+      authedRef.current = false;
 
       ws.onopen = () => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -57,11 +89,13 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers, watche
           switch (data.type) {
             case 'auth:ok':
               attempt = 0;
+              authedRef.current = true;
+              setConnected(true);
               if (hasConnectedOnce) {
                 handlersRef.current.onReconnected?.();
               }
               hasConnectedOnce = true;
-              if (watchedUserId && ws) ws.send(JSON.stringify({ type: 'watch:partner', partnerId: watchedUserId }));
+              sendWatch();
               if (pingTimer) clearInterval(pingTimer);
               pingTimer = setInterval(() => {
                 if (ws && ws.readyState === WebSocket.OPEN) {
@@ -110,7 +144,12 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers, watche
           clearInterval(pingTimer);
           pingTimer = null;
         }
+        authedRef.current = false;
+        setConnected(false);
         if (!active) return;
+        if (!hasConnectedOnce && attempt + 1 >= MAX_INITIAL_CONNECT_FAILURES) {
+          return; // no WebSocket on this host: rely on polling instead of retrying forever
+        }
         const delay = Math.min(15000, 1000 * Math.pow(2, attempt));
         attempt += 1;
         reconnectTimer = setTimeout(connect, delay);
@@ -131,6 +170,15 @@ export function useRealtime(enabled: boolean, handlers: RealtimeHandlers, watche
         ws.onclose = null;
         ws.close();
       }
+      wsRef.current = null;
+      authedRef.current = false;
     };
-  }, [enabled, watchedUserId]);
+  }, [enabled]);
+
+  // Opening another chat only changes which partner's presence we watch
+  useEffect(() => {
+    sendWatch();
+  }, [watchedUserId, connected]);
+
+  return connected;
 }

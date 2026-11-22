@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppTab, ChatMessage, MatchSummary } from './types/nearu';
 import { api } from './services/api';
 import { useRealtime } from './hooks/useRealtime';
+import { useLiveRefresh } from './hooks/useLiveRefresh';
 import { AppShell } from './layouts/AppShell';
 import { LandingPage } from './pages/LandingPage';
 import { CampusVerifyPage } from './pages/CampusVerifyPage';
@@ -26,10 +27,27 @@ function AuthenticatedWorkspace() {
   const [likesRefreshToken, setLikesRefreshToken] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
 
+  // Latest values for the live-refresh callbacks (so timers never read stale state)
+  const activeTabRef = useRef<AppTab>(activeTab);
+  const viewingMatchIdRef = useRef<number | null>(null);
+  const matchesRef = useRef<MatchSummary[]>([]);
+  const matchesLoadedRef = useRef(false);
+  const profileIdRef = useRef<string | undefined>(profile?.id);
+  // Out-of-order protection for background refreshes
+  const likesRequestRef = useRef(0);
+  const lastRealtimeEventRef = useRef(0);
+  activeTabRef.current = activeTab;
+  profileIdRef.current = profile?.id;
+  viewingMatchIdRef.current = activeTab === 'matches' ? selectedMatchId : null;
+  matchesRef.current = matches;
+
   const refreshLikes = useCallback(async () => {
+    // Several triggers can fire at once; only the most recently started request may update the
+    // badge, so a slow older reply can't overwrite a newer one.
+    const requestId = ++likesRequestRef.current;
     try {
       const { count } = await api.getReceivedLikes();
-      setLikesTotal(count);
+      if (requestId === likesRequestRef.current) setLikesTotal(count);
     } catch {
       // The Likes page will show a retryable error if the user opens it.
     }
@@ -41,6 +59,7 @@ function AuthenticatedWorkspace() {
     try {
       const { matches: fetched } = await api.getMatches();
       setMatches(fetched);
+      matchesLoadedRef.current = true;
     } catch (err: any) {
       setMatchesError(err?.message || 'Could not load matches.');
     } finally {
@@ -60,6 +79,67 @@ function AuthenticatedWorkspace() {
     const { messages } = await api.getMessages(matchId);
     setMessagesByMatch((prev) => ({ ...prev, [matchId]: messages }));
   }, []);
+
+  // ---- Background refresh for hosts without WebSockets (Vercel serverless) ----
+
+  const refreshMatchesSilently = useCallback(async () => {
+    const startedAt = Date.now();
+    try {
+      const { matches: fetched } = await api.getMatches();
+      // A live (WebSocket) event arrived while this request was in flight: local state is newer
+      // than this snapshot, so don't overwrite it. The next refresh reconciles.
+      if (lastRealtimeEventRef.current > startedAt) return;
+      const viewingId = viewingMatchIdRef.current;
+      const known = new Set(matchesRef.current.map((m) => m.id));
+      const fresh = fetched.filter((m) => !known.has(m.id));
+
+      // Keep the thread the user is looking at marked as read
+      if (viewingId !== null) {
+        const current = fetched.find((m) => m.id === viewingId);
+        if (current && current.unreadCount > 0) api.markRead(viewingId).catch(() => {});
+      }
+      setMatches(fetched.map((m) => (m.id === viewingId ? { ...m, unreadCount: 0 } : m)));
+
+      // A match created by the other person while we were away: same celebration as realtime
+      if (matchesLoadedRef.current && fresh.length > 0) {
+        setCelebrationMatch((prev) => prev || fresh[0]);
+      }
+    } catch {
+      // Keep the current list; the next tick retries
+    }
+  }, []);
+
+  const refreshThreadSilently = useCallback(async (matchId: number) => {
+    const startedAt = Date.now();
+    try {
+      const { messages: fetched } = await api.getMessages(matchId);
+      if (lastRealtimeEventRef.current > startedAt) return;
+      setMessagesByMatch((prev) => {
+        // The server copy wins (new messages, read/delivered ticks, messages the other person
+        // deleted). Keep only OUR OWN just-sent message that this snapshot may predate.
+        const fetchedIds = new Set(fetched.map((m) => m.id));
+        const newestFetchedId = fetched.length ? fetched[fetched.length - 1].id : 0;
+        const keep = (prev[matchId] || []).filter(
+          (m) =>
+            !fetchedIds.has(m.id) &&
+            m.senderId === profileIdRef.current &&
+            m.id > newestFetchedId &&
+            Date.now() - new Date(m.createdAt).getTime() < 20_000
+        );
+        return { ...prev, [matchId]: [...fetched, ...keep] };
+      });
+    } catch {
+      // ignore; next tick retries
+    }
+  }, []);
+
+  const refreshLive = useCallback(() => {
+    refreshMatchesSilently();
+    refreshLikes();
+    if (activeTabRef.current === 'likes') setLikesRefreshToken((v) => v + 1);
+    const viewingId = viewingMatchIdRef.current;
+    if (viewingId !== null) refreshThreadSilently(viewingId);
+  }, [refreshMatchesSilently, refreshLikes, refreshThreadSilently]);
 
   const markMatchRead = useCallback((matchId: number) => {
     api.markRead(matchId).catch(() => {});
@@ -127,8 +207,9 @@ function AuthenticatedWorkspace() {
     ? undefined
     : matches.find((match) => match.id === selectedMatchId)?.partner.id;
 
-  useRealtime(Boolean(profile?.isProfileComplete), {
+  const realtimeConnected = useRealtime(Boolean(profile?.isProfileComplete), {
     onMessageCreated: (matchId, message) => {
+      lastRealtimeEventRef.current = Date.now();
       appendMessageIdempotent(matchId, message);
     },
     onMessagesRead: (matchId, readerId, readAt) => {
@@ -155,6 +236,7 @@ function AuthenticatedWorkspace() {
       }));
     },
     onMessageDeleted: (matchId, messageId) => {
+      lastRealtimeEventRef.current = Date.now();
       setMessagesByMatch((prev) => ({
         ...prev,
         [matchId]: (prev[matchId] || []).filter((message) => message.id !== messageId),
@@ -165,6 +247,7 @@ function AuthenticatedWorkspace() {
       setOnlineUsers((previous) => ({ ...previous, [userId]: online }));
     },
     onMatchCreated: (match) => {
+      lastRealtimeEventRef.current = Date.now();
       setMatches((prev) => {
         if (prev.some((m) => m.id === match.id)) return prev;
         return [match, ...prev];
@@ -176,6 +259,7 @@ function AuthenticatedWorkspace() {
       refreshLikes();
     },
     onMatchRemoved: (matchId) => {
+      lastRealtimeEventRef.current = Date.now();
       handleMatchRemoved(matchId);
     },
     onReconnected: () => {
@@ -187,6 +271,13 @@ function AuthenticatedWorkspace() {
     },
   }, watchedUserId);
 
+  // Fallback for hosts without WebSockets: refresh on focus, and poll while the socket is down
+  useLiveRefresh({
+    enabled: Boolean(profile?.isProfileComplete),
+    realtimeConnected,
+    onRefresh: refreshLive,
+  });
+
   const handleSendMessage = useCallback(
     async (matchId: number, content: string) => {
       const { message } = await api.sendMessage(matchId, content);
@@ -195,9 +286,18 @@ function AuthenticatedWorkspace() {
     [appendMessageIdempotent]
   );
 
-  const handleDeleteMessage = useCallback(async (messageId: number) => {
-    await api.deleteMessage(messageId);
-  }, []);
+  const handleDeleteMessage = useCallback(
+    async (messageId: number) => {
+      const { matchId } = await api.deleteMessage(messageId);
+      // Apply immediately: without a WebSocket there is no `message:deleted` event to wait for
+      setMessagesByMatch((prev) => ({
+        ...prev,
+        [matchId]: (prev[matchId] || []).filter((message) => message.id !== messageId),
+      }));
+      refreshMatchesSilently();
+    },
+    [refreshMatchesSilently]
+  );
 
   const handleOpenMatchChat = useCallback((match: MatchSummary) => {
     setCelebrationMatch(null);
@@ -216,6 +316,9 @@ function AuthenticatedWorkspace() {
     },
     [appendMessageIdempotent, handleOpenMatchChat]
   );
+
+  // "Online" comes from live WebSocket presence only
+  const partnerIsOnline = Boolean(watchedUserId && onlineUsers[watchedUserId]);
 
   const unreadTotal = useMemo(
     () => matches.reduce((sum, m) => sum + (m.unreadCount || 0), 0),
@@ -271,7 +374,7 @@ function AuthenticatedWorkspace() {
           onLoadMessages={loadMessages}
           onSendMessage={handleSendMessage}
           onDeleteMessage={handleDeleteMessage}
-          onlinePartner={watchedUserId ? Boolean(onlineUsers[watchedUserId]) : false}
+          onlinePartner={partnerIsOnline}
           onMarkRead={markMatchRead}
           onMatchRemovedLocally={handleMatchRemoved}
           onGoToDiscover={() => setActiveTab('discover')}
